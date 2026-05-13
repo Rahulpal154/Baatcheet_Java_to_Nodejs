@@ -6,7 +6,17 @@ This plan covers Phase 1 discovery for migrating `LatticeInnovations/Baatcheet-b
 
 Per the migration playbook, this PR intentionally contains only this plan. No application code should be written until this plan is reviewed and the user confirms to proceed.
 
-Source-of-truth schema dump: `Dump20260513.sql` (MySQL 8.0.45 dump, database `baatcheet`, 35 `CREATE TABLE` statements, 29 foreign-key constraints, seed/data inserts present in 33 tables).
+Source-of-truth schema dump: `Dump20260513.sql` (MySQL 8.0.45 dump, database `baatcheet`, 35 `CREATE TABLE` statements, 29 foreign-key constraints, seed/data inserts present in 33 tables). Only table/view schema should be migrated; do not convert dump data inserts into seeders.
+
+## Human review decisions
+
+The following decisions were confirmed in PR review and are now migration requirements:
+
+1. Migrate only table/view schema. Do not dump database data as seeders.
+2. Preserve old frontend routes in the Node.js backend so existing frontends continue to work.
+3. Omit `flyway_schema_history`; the target backend uses Sequelize migrations and does not need Java/Flyway internal metadata.
+4. Build notification/provider interfaces now, with mocked/stub implementations during migration. Real SendGrid/Twilio providers can be connected later when deployment secrets are added through `.env`.
+5. Match the live production Java backend behavior. Do not modify Java code, and do not require Devin to receive provider keys/secrets during migration.
 
 ## Architecture inventory
 
@@ -216,7 +226,7 @@ Frontend note: `baatcheet-frontend` contains older calls such as `/homepage/save
 | DELETE | `/reflections/submission/override` | `Authorization` | override payload, `200` |
 | POST | `/reflections/download/submissionStory` | optional `Authorization`; JSON `ReportDTO`; optional `visitorId` | Word document `InputStreamResource`, `200` |
 
-Frontend note: the user frontend contains older patterns such as `/reflections/{userId}/submissions`, `/reflections/download/submissionStory/{userId}`, and `/reflections/copy/notes/{userId}`. Treat this as a contract-risk item and verify against deployed API or decide whether to preserve alias routes in Node without changing the canonical Java routes.
+Frontend note: the user frontend contains older patterns such as `/reflections/{userId}/submissions`, `/reflections/download/submissionStory/{userId}`, and `/reflections/copy/notes/{userId}`. Preserve these old frontend routes in Node.js as compatibility routes while also matching live production Java behavior.
 
 ### Users
 
@@ -264,7 +274,7 @@ The SQL dump is the schema source of truth for Sequelize models and migrations. 
 | `author_community_map` | PK `ac_id`; FK `author_id -> authors.author_id` | `author.entity.Community` | Belongs to author; community enum stored as tinyint plus free-text name |
 | `authors` | PK `author_id`; FK `user_id -> user_master.user_id` | `author.entity.Author` | DDL has both `users_id` and `user_id`; model must preserve both if present |
 | `editor_master` | PK `editor_id` | `user.entity.Editor` | boolean flags are MySQL `bit(1)` |
-| `flyway_schema_history` | PK `installed_rank`, index `success` | Flyway internal | Do not model as domain entity; preserve only if reproducing exact imported schema |
+| `flyway_schema_history` | PK `installed_rank`, index `success` | Flyway internal | Omit from the target Sequelize schema; it is Java/Flyway internal metadata |
 | `location_master` | PK `location_id` | `misc.entity.Location` | hierarchical location via `parent_id`, `type` tinyint |
 | `media_links` | FK `feedback_id -> submission_feedback.feedback_id`; no explicit PK in dump | collection table | Sequelize migration must preserve missing PK behavior unless intentionally normalized with approval |
 | `note_prompts` | PK `prompt_id`; FKs to `question_master`, `user_notes` | `user.entity.NotePrompts` | DDL has `question_module`, `question_type`, Hindi fields; map enum tinyints |
@@ -350,7 +360,7 @@ The user Angular app uses token-bearing helper methods and exercises public/mobi
 - Media upload: `/media` multipart
 - Feedback: `/feedback`
 
-Contract risk: several user-frontend calls include path `userId` segments where the monolithic Java controller now expects token-derived identity and no user-id path. Preserve Java canonical routes first, but decide during implementation whether harmless alias routes are required for deployed frontend compatibility.
+Several user-frontend calls include path `userId` segments where the monolithic Java controller now expects token-derived identity and no user-id path. Implement compatibility routes for these old frontend paths so existing frontends continue to work, while keeping canonical Java/live-production behavior intact.
 
 ## Java-specific patterns and migration handling
 
@@ -361,7 +371,7 @@ Contract risk: several user-frontend calls include path `userId` segments where 
 - Apache POI workbook export in `/admin/downloadReport` maps to `exceljs`.
 - Apache POI `XWPFDocument` submission-story export maps to `docx` or equivalent stream response.
 - TF-IDF and fuzzy search use Apache Commons Text `LevenshteinDistance`; preserve ranking semantics with a tested JS Levenshtein implementation.
-- SendGrid Java service maps to `@sendgrid/mail`; the Twilio dependency is present but no concrete usage was found in discovery.
+- SendGrid Java service and the Twilio dependency should be represented by provider interfaces during migration. Use mocked/stub implementations until deployment `.env` secrets are added later; do not require Devin to receive provider keys during migration.
 - reCAPTCHA uses a server-side HTTP POST/GET through `RestTemplate`; implement with `axios` or `undici`, preserving error handling.
 - `@Async` appears in `TFIDFProcessor.processStoryTFIDF()`; use an async service/background job, not blocking request handlers.
 
@@ -379,7 +389,7 @@ Contract risk: several user-frontend calls include path `userId` segments where 
 10. **Submissions / tell-story flow**: submission creation, basic details, prompt reorder/delete, feedback, submit/draft, copy notes, override/existence checks, visitor restrictions.
 11. **Admin/editor/reporting**: editors, admin submission/user lists, participant status, feedback reports, Excel download, Word document export.
 12. **Visitor and scheduled cleanup**: visitor creation/language and daily inactive visitor cleanup.
-13. **Cross-cutting parity**: logging, OpenAPI, metrics/health equivalent to actuator, SendGrid notifications, final docs and deployment handover.
+13. **Cross-cutting parity**: logging, OpenAPI, metrics/health equivalent to actuator, provider interfaces with mocked/stub notification implementations, final docs and deployment handover.
 
 Dependency rationale: auth/user and reference data are needed by authors/stories; stories and media are needed before feeds; feeds/reactions/bookmarks are needed before reflection/submission flows; admin reporting depends on users/stories/submissions.
 
@@ -388,15 +398,15 @@ Dependency rationale: auth/user and reference data are needed by authors/stories
 - Use Node 20 and PNPM.
 - Use `sequelize-typescript` decorators and `umzug` migrations.
 - Use MySQL driver `mysql2` because the dump and Java datasource are MySQL 8.
-- Keep `db/schema.sql` as a copied reference only if user approves storing the provided dump in repo; otherwise store only generated migrations. The dump contains production-like data inserts and should be reviewed before committing.
+- Migrate table/view schema only. Do not commit dump data inserts as seeders.
 - Add `GET /health -> 200` returning app status and no DB-required startup dependency.
 - Add `.env.example` with placeholders, never real values from source `application.properties`.
 - Add Docker Compose with MySQL 8; Redis/RabbitMQ not needed unless a later slice introduces queues/cache.
 
-## Open questions for human review
+## Resolved review questions
 
-1. Should the SQL dump data inserts be committed as seeders, or should only table/view schema be migrated?
-2. Should Node preserve older frontend alias routes that include path `userId`, or should frontends be updated later to use the Java canonical routes?
-3. Should `flyway_schema_history` be reproduced in the target schema, or omitted as Java/Flyway internal metadata?
-4. Should notification integrations (SendGrid and any future Twilio use) be implemented with real providers during migration, or stubbed behind interfaces until deployment secrets are provisioned?
-5. Is exact compatibility with the current deployed Java API more important than strict compatibility with the checked-in frontend code where they differ?
+1. Only table/view schema will be migrated; dump data inserts will not become seeders.
+2. Node.js will preserve old frontend routes for compatibility.
+3. `flyway_schema_history` will be omitted from the target Sequelize schema.
+4. Notification integrations will use provider interfaces with mocked/stub implementations during migration; real providers will be connected later via `.env` secrets.
+5. The Node.js backend should behave exactly like the live production Java backend. The Java source repo remains unchanged.
