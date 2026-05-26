@@ -1,0 +1,8 @@
+.env
+node_modules
+firebase
+config/*.json
+uploads/*
+recaptcha.html
+.claude
+CLAUDE.md
