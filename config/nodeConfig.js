@@ -1,0 +1,108 @@
+require('dotenv').config();
+
+const config = () => {
+    switch (process.env.NODE_ENV) {
+        case "local": return {
+            PORT: process.env.PORT_L,
+            YAML: './swagger/api.yaml',
+            EMAIL_FROM: process.env.MAIL_FROM,
+            JWT_KEY: process.env.JWT_KEY_L,
+            SMS_SID: process.env.SMS_SID_L,
+            SMS_TOKEN: process.env.SMS_AUTH_TOKEN_L,
+            SMS_NUMBER: process.env.NUMBER_L,
+            LOGIN_ELAPSED_TIME: process.env.LOGIN_ELAPSED_TIME_L,
+            MAX_LOGIN_COUNT: process.env.MAX_LOGIN_COUNT_L,
+            OTP_EXPIRED_IN: process.env.OTP_EXPIRED_IN_L,
+            PASSWORD_EXPIRED_IN: process.env.PASSWORD_EXPIRED_IN_L,
+            FRONT_END_URL: '',
+            fixedOTP: 0,
+            JWT_TEMPKEY: process.env.JWT_TEMPKEY_L,
+            whitelist: process.env.whitelist,
+            GCP_KEY_FILE: process.env.GCP_KEY_FILE,
+            GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+            GCP_BUCKET: process.env.GCP_BUCKET,
+            MAILGUN_API_KEY: process.env.MAILGUN_API_KEY,
+            MAILGUN_DOMAIN: process.env.MAILGUN_DOMAIN,
+            MFA_ORIGIN: process.env.origin,
+            MFA_RPNAME: process.env.rpName,
+            MFA_RPID: process.env.rpID
+        }
+        case "development": return {
+            PORT: process.env.PORT_D,
+            YAML: './swagger/api.yaml',
+            EMAIL_FROM: process.env.MAIL_FROM,
+            JWT_KEY: process.env.JWT_KEY_D,
+            SMS_SID: process.env.SMS_SID_D,
+            SMS_TOKEN: process.env.SMS_AUTH_TOKEN_D,
+            SMS_NUMBER: process.env.NUMBER_D,
+            LOGIN_ELAPSED_TIME: process.env.LOGIN_ELAPSED_TIME_D,
+            MAX_LOGIN_COUNT: process.env.MAX_LOGIN_COUNT_D,
+            OTP_EXPIRED_IN: process.env.OTP_EXPIRED_IN_D,
+            PASSWORD_EXPIRED_IN: process.env.PASSWORD_EXPIRED_IN_D,
+            FRONT_END_URL: '',
+            fixedOTP: 0,
+            JWT_TEMPKEY: process.env.JWT_TEMPKEY_D,
+            whitelist: process.env.whitelist,
+            GCP_KEY_FILE: process.env.GCP_KEY_FILE,
+            GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+            GCP_BUCKET: process.env.GCP_BUCKET,
+            MAILGUN_API_KEY: process.env.MAILGUN_API_KEY,
+            MAILGUN_DOMAIN: process.env.MAILGUN_DOMAIN,
+            MFA_ORIGIN: process.env.origin,
+            MFA_RPNAME: process.env.rpName,
+            MFA_RPID: process.env.rpID
+        }
+        case "test": return {
+            PORT: process.env.PORT_T,
+            YAML: './swagger/api.yaml',
+            EMAIL_FROM: process.env.MAIL_FROM,
+            JWT_KEY: process.env.JWT_KEY_T,
+            SMS_SID: process.env.SMS_SID_T,
+            SMS_TOKEN: process.env.SMS_AUTH_TOKEN_T,
+            SMS_NUMBER: process.env.NUMBER_T,
+            LOGIN_ELAPSED_TIME: process.env.LOGIN_ELAPSED_TIME_T,
+            MAX_LOGIN_COUNT: process.env.MAX_LOGIN_COUNT_T,
+            OTP_EXPIRED_IN: process.env.OTP_EXPIRED_IN_T,
+            PASSWORD_EXPIRED_IN: process.env.PASSWORD_EXPIRED_IN_T,
+            FRONT_END_URL: '',
+            fixedOTP: 0,
+            JWT_TEMPKEY: process.env.JWT_TEMPKEY_T,
+            whitelist: process.env.whitelist,
+            GCP_KEY_FILE: process.env.GCP_KEY_FILE,
+            GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+            GCP_BUCKET: process.env.GCP_BUCKET,
+            MAILGUN_API_KEY: process.env.MAILGUN_API_KEY,
+            MAILGUN_DOMAIN: process.env.MAILGUN_DOMAIN,
+            MFA_ORIGIN: process.env.origin,
+            MFA_RPNAME: process.env.rpName,
+            MFA_RPID: process.env.rpID
+        }
+        case "production": return {
+            PORT: process.env.PORT_P,
+            YAML: './swagger/api.yaml',
+            EMAIL_FROM: process.env.MAIL_FROM,
+            JWT_KEY: process.env.JWT_KEY_P,
+            SMS_SID: process.env.SMS_SID_P,
+            SMS_TOKEN: process.env.SMS_AUTH_TOKEN_P,
+            SMS_NUMBER: process.env.NUMBER_P,
+            LOGIN_ELAPSED_TIME: process.env.LOGIN_ELAPSED_TIME_P,
+            MAX_LOGIN_COUNT: process.env.MAX_LOGIN_COUNT_P,
+            OTP_EXPIRED_IN: process.env.OTP_EXPIRED_IN_P,
+            PASSWORD_EXPIRED_IN: process.env.PASSWORD_EXPIRED_IN_P,
+            FRONT_END_URL: '---',
+            fixedOTP: 0,
+            JWT_TEMPKEY: process.env.JWT_TEMPKEY_P,
+            whitelist: process.env.whitelist,
+            GCP_KEY_FILE: process.env.GCP_KEY_FILE,
+            GCP_PROJECT_ID: process.env.GCP_PROJECT_ID,
+            GCP_BUCKET: process.env.GCP_BUCKET,
+            MAILGUN_API_KEY: process.env.MAILGUN_API_KEY,
+            MAILGUN_DOMAIN: process.env.MAILGUN_DOMAIN,
+            MFA_ORIGIN: process.env.origin,
+            MFA_RPNAME: process.env.rpName,
+            MFA_RPID: process.env.rpID
+        }
+    }
+}
+
+exports.config = config;
