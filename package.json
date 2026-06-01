@@ -11,7 +11,8 @@
     "mocha": "cross-env NODE_ENV=local mocha --timeout 25000 --colors",
     "test:awesome": "mocha --reporter mochawesome || true",
     "open:report": "open mochawesome-report/mochawesome.html",
-    "test:register": "cross-env NODE_ENV=local npx jest tests/user.register.test.js --forceExit --verbose"
+    "test:register": "cross-env NODE_ENV=local npx jest tests/user.register.test.js --forceExit --verbose",
+    "test:login": "cross-env NODE_ENV=local npx jest tests/user.login.test.js --forceExit --verbose"
   },
   "keywords": [],
   "author": "",

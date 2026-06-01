@@ -274,4 +274,65 @@ const saveUser = async (userData) => {
   }
 };
 
-module.exports = { saveUser, generateUserToken };
+// exports moved to bottom
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1257 — Login
+// Mirrors: UserServiceImpl.checkExistingUser()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Check if user exists by email OR mobile and return JWT.
+ * Java: UserServiceImpl.checkExistingUser(UserLoginRequestDto, HttpServletResponse)
+ *
+ * Logic:
+ *  - if userEmail provided → findByUserEmail()
+ *  - else               → findByUserMobile()
+ *  - if found  → userExists="TRUE", return userId + jwtToken + isEmailLogin
+ *  - if not found → userExists="FALSE" (no error thrown — Java returns 200)
+ *
+ * Cookie-setting is handled in the controller (mirrors CookieManager behaviour).
+ */
+const checkExistingUser = async (userEmail, userMobile) => {
+  let user = null;
+
+  if (userEmail) {
+    user = await model.user_master.findOne({
+      where: { user_email: userEmail },
+      raw: true,
+    });
+    // Java: also persist isEmailLogin flag on the found record
+    if (user) {
+      await model.user_master.update(
+        { is_email_login: user.is_email_login }, // preserves existing value
+        { where: { user_id: user.user_id } }
+      );
+    }
+  } else {
+    user = await model.user_master.findOne({
+      where: { user_mobile: userMobile },
+      raw: true,
+    });
+    if (user) {
+      await model.user_master.update(
+        { is_email_login: user.is_email_login },
+        { where: { user_id: user.user_id } }
+      );
+    }
+  }
+
+  if (!user) {
+    return { userExists: 'FALSE', userId: null, jwtToken: null, isEmailLogin: null };
+  }
+
+  const token = generateUserToken(user);
+
+  return {
+    userExists: 'TRUE',
+    userId: user.user_id,
+    jwtToken: token,
+    isEmailLogin: !!user.is_email_login,
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser };
