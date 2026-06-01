@@ -45,12 +45,13 @@ module.exports = {
     "dialect": process.env.DB_DIALECT_T,
     port: process.env.DB_PORT_T,
     logging: false,
-    dialectOptions: {
-      ssl: {
-        require: true, // This will help you. But you will see nwe error
-        rejectUnauthorized: false // This line will fix new error
-      }
-    },
+    // For Testing Purpose
+    // dialectOptions: {
+    //   ssl: {
+    //     require: true, // This will help you. But you will see nwe error
+    //     rejectUnauthorized: false // This line will fix new error
+    //   }
+    // },
     pool: {
       max: 10,
       min: 0,

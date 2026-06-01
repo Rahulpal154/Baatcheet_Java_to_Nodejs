@@ -10,7 +10,8 @@
     "local": "cross-env NODE_ENV=local node ./bin/www",
     "mocha": "cross-env NODE_ENV=local mocha --timeout 25000 --colors",
     "test:awesome": "mocha --reporter mochawesome || true",
-    "open:report": "open mochawesome-report/mochawesome.html"
+    "open:report": "open mochawesome-report/mochawesome.html",
+    "test:register": "cross-env NODE_ENV=local npx jest tests/user.register.test.js --forceExit --verbose"
   },
   "keywords": [],
   "author": "",
@@ -27,8 +28,15 @@
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "mysql2": "^3.22.3",
+    "pg": "^8.21.0",
+    "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.8",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "sequelize-cli": "^6.6.5",
+    "supertest": "^7.2.2"
   }
 }

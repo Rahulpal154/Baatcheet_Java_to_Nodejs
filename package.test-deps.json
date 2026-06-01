@@ -1,0 +1,10 @@
+{
+  "_comment": "Add these devDependencies to your package.json and run: npm install",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4"
+  },
+  "scripts": {
+    "test:register": "cross-env NODE_ENV=local npx jest tests/user.register.test.js --forceExit --verbose"
+  }
+}
