@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -90,4 +90,22 @@ const updateUserById = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1260 — Get User Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getUserById = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId } = req.params;
+
+    const user = await getUser(Number(userId));
+    return res.status(200).json(user);
+  } catch (err) {
+    console.error('[getUserById]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, updateUserById, getUserById };

@@ -480,4 +480,60 @@ const updateUser = async (userId, userData) => {
   }
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1260 — Get User
+// Mirrors: UserServiceImpl.getUser()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Retrieve user profile by ID with all relationships (tags, triggers, communities).
+ * Returns complete UserResponseDto matching Java response.
+ */
+const getUser = async (userId) => {
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const tags = await model.user_tag_map.findAll({
+    where: { user_id: userId },
+    attributes: ['tag_id'],
+    raw: true,
+  });
+
+  const triggers = await model.user_trigger_map.findAll({
+    where: { user_id: userId },
+    attributes: ['trigger_id'],
+    raw: true,
+  });
+
+  const communities = await model.user_community_map.findAll({
+    where: { user_id: userId },
+    attributes: ['community_id'],
+    raw: true,
+  });
+
+  return {
+    userId: user.user_id,
+    userName: user.user_name,
+    userAge: user.user_age,
+    userMobile: user.user_mobile,
+    userGenderId: GenderEnum.indexOf(user.user_gender_id),
+    languageEnum: user.preferred_language,
+    locationId: user.location_id,
+    locationName: user.location_name,
+    userEmail: user.user_email,
+    userAvatar: user.user_avatar,
+    isEmailLogin: !!user.is_email_login,
+    isParticipant: user.is_participant,
+    userTag: tags.map(t => ({ tagId: t.tag_id })),
+    triggers: triggers.map(t => ({ triggerId: t.trigger_id })),
+    userCommunity: communities.map(c => ({ communityId: c.community_id })),
+    createdOn: user.created_on,
+    updatedOn: user.updated_on,
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser };

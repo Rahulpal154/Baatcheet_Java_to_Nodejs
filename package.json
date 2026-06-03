@@ -13,7 +13,8 @@
     "open:report": "open mochawesome-report/mochawesome.html",
     "test:register": "cross-env NODE_ENV=local npx jest tests/user.register.test.js --forceExit --verbose",
     "test:login": "cross-env NODE_ENV=local npx jest tests/user.login.test.js --forceExit --verbose",
-    "test:update": "cross-env NODE_ENV=local npx jest tests/user.update.test.js --forceExit --verbose"
+    "test:update": "cross-env NODE_ENV=local npx jest tests/user.update.test.js --forceExit --verbose",
+    "test:get": "cross-env NODE_ENV=local npx jest tests/user.get.test.js --forceExit --verbose"
   },
   "keywords": [],
   "author": "",

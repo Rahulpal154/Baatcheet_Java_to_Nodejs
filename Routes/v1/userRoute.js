@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -313,3 +313,58 @@ router.put('/:userId', auth, [
 ], updateUserById);
 
 module.exports = router;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1260 — Get User Route
+// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}:
+ *   get:
+ *     summary: Get user profile by ID
+ *     description: Retrieve complete user profile with tags, triggers, and communities
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *     responses:
+ *       200:
+ *         description: User profile retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 userId:        { type: integer }
+ *                 userName:      { type: string }
+ *                 userAge:       { type: integer }
+ *                 userMobile:    { type: integer }
+ *                 userEmail:     { type: string }
+ *                 userGenderId:  { type: integer }
+ *                 languageEnum:  { type: integer }
+ *                 locationId:    { type: integer }
+ *                 locationName:  { type: string }
+ *                 userAvatar:    { type: string }
+ *                 isEmailLogin:  { type: boolean }
+ *                 isParticipant: { type: boolean }
+ *                 userTag:       { type: array }
+ *                 triggers:      { type: array }
+ *                 userCommunity: { type: array }
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.get('/:userId', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+], getUserById);
