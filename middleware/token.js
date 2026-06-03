@@ -19,37 +19,37 @@ router.use(async function (req, res, next) {
         let decodedToken = await checkTokenValid(token);
         console.log("check decoded token: ", decodedToken)
         let auth = null;
-        if(decodedToken.workflow =='citizen'){
-            auth = await model.citizen_credentials.findOne({
-                where:{
-                    citizen_id:decodedToken.user_id
-                },
-                raw:true
-            })
+        // if(decodedToken.workflow =='citizen'){
+        //     auth = await model.citizen_credentials.findOne({
+        //         where:{
+        //             citizen_id:decodedToken.user_id
+        //         },
+        //         raw:true
+        //     })
 
-        }
-        else{
-            auth = await model.staff_credentials.findOne({
-                where:{
-                    staff_id: decodedToken.user_id
-                },
-                raw:true
-            })
+        // }
+        // else{
+        //     auth = await model.staff_credentials.findOne({
+        //         where:{
+        //             staff_id: decodedToken.user_id
+        //         },
+        //         raw:true
+        //     })
 
-            if(auth && auth.is_verified && auth.is_active ==false){
-                return res.status(401).json({
-                    status: 0,
-                    message: "Unauthorized"
-                });
-            }
-        }
-        const device_id = auth?.device_id;
-            if(device_id != decodedToken.device_id){
-                return res.status(401).json({
-                    status: 0,
-                    message: "Unauthorized"
-                });
-        }
+        //     if(auth && auth.is_verified && auth.is_active ==false){
+        //         return res.status(401).json({
+        //             status: 0,
+        //             message: "Unauthorized"
+        //         });
+        //     }
+        // }
+        // const device_id = auth?.device_id;
+        //     if(device_id != decodedToken.device_id){
+        //         return res.status(401).json({
+        //             status: 0,
+        //             message: "Unauthorized"
+        //         });
+        // }
         req.decodedToken = decodedToken;
         next();
     }

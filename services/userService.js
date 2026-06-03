@@ -335,4 +335,149 @@ const checkExistingUser = async (userEmail, userMobile) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser };
+// exports at bottom
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1259 — Update User
+// Mirrors: UserServiceImpl.updateUser()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Update existing user profile.
+ * Java: UserServiceImpl.updateUser(UserEntity, int id, String token)
+ *
+ * Logic:
+ *  - Find user by id (404 if not found)
+ *  - Update basic info (name, age, avatar, gender, language, location)
+ *  - if !isEmailLogin → update email (mobile-login users can change email)
+ *  - if isEmailLogin  → update mobile
+ *  - Delete + re-save communities, tags, triggers
+ *  - Duplicate check for email/mobile on update (409 if clash)
+ */
+const updateUser = async (userId, userData) => {
+  const t = await sequelize.transaction();
+  try {
+    const existing = await model.user_master.findByPk(userId, { transaction: t });
+    if (!existing) {
+      const err = new Error(`User not found with id: ${userId}`);
+      err.status = 404;
+      throw err;
+    }
+
+    const {
+      userName, userAge, userAvatar, userGenderId, languageEnum,
+      locationId, locationName, userEmail, userMobile,
+      userTag = [], triggers = [], userCommunity = [],
+    } = userData;
+
+    // Resolve gender
+    let genderDbValue;
+    if (typeof userGenderId === 'number') {
+      genderDbValue = GenderEnum[userGenderId] || existing.user_gender_id;
+    } else {
+      genderDbValue = String(userGenderId).toUpperCase();
+    }
+
+    // Resolve language
+    let languageOrdinal;
+    if (typeof languageEnum === 'number') {
+      languageOrdinal = languageEnum;
+    } else {
+      languageOrdinal = LanguageEnum.indexOf(String(languageEnum).toUpperCase());
+      if (languageOrdinal < 0) languageOrdinal = existing.preferred_language;
+    }
+
+    // Build update fields
+    const updateFields = {
+      user_name:          userName      !== undefined ? userName      : existing.user_name,
+      user_age:           userAge       !== undefined ? userAge       : existing.user_age,
+      user_avatar:        userAvatar    !== undefined ? userAvatar    : existing.user_avatar,
+      user_gender_id:     genderDbValue,
+      preferred_language: languageOrdinal,
+      location_id:        locationId    !== undefined ? locationId    : existing.location_id,
+      location_name:      locationName  !== undefined ? locationName  : existing.location_name,
+      updated_on:         new Date(),
+    };
+
+    // Java: if !isEmailLogin → update email; if isEmailLogin → update mobile
+    if (!existing.is_email_login) {
+      if (userEmail !== undefined && userEmail !== existing.user_email) {
+        // Check duplicate email globally
+        const dup = await model.user_master.count({
+          where: { user_email: userEmail },
+          transaction: t,
+        });
+        if (dup > 0) {
+          const err = new Error(`User already exists with email Id: ${userEmail}`);
+          err.status = 409;
+          throw err;
+        }
+        updateFields.user_email = userEmail;
+      }
+    } else {
+      if (userMobile !== undefined && userMobile !== existing.user_mobile) {
+        // Check duplicate mobile globally
+        const dup = await model.user_master.count({
+          where: { user_mobile: userMobile },
+          transaction: t,
+        });
+        if (dup > 0) {
+          const err = new Error(`User already exists with mobile: ${userMobile}`);
+          err.status = 409;
+          throw err;
+        }
+        updateFields.user_mobile = userMobile;
+      }
+    }
+
+    await model.user_master.update(updateFields, {
+      where: { user_id: userId },
+      transaction: t,
+    });
+
+    // ── Communities: delete + re-save ─────────────────────────────────────
+    await model.user_community_map.destroy({ where: { user_id: userId }, transaction: t });
+    for (const c of userCommunity) {
+      let ordinal = typeof c.communityId === 'number' ? c.communityId
+        : ['OTHER','LGBTQIA','PERSON_WITH_DISABILITY','DALIT_BAHUJAN_OR_ADIVASI','RELIGIOUS_MINORITIES','NOT_APPLICABLE'].indexOf(String(c.communityId).toUpperCase());
+      if (ordinal < 0) ordinal = 0;
+      await model.user_community_map.create({ community_id: ordinal, user_id: userId }, { transaction: t });
+    }
+
+    // ── Tags: delete + re-save ─────────────────────────────────────────────
+    await model.user_tag_map.destroy({ where: { user_id: userId }, transaction: t });
+    for (const tag of userTag) {
+      const tagRecord = await model.tag_master.findByPk(tag.tagId, { transaction: t });
+      if (!tagRecord) {
+        const err = new Error(`Tag not found with id: ${tag.tagId}`);
+        err.status = 404;
+        throw err;
+      }
+      await model.user_tag_map.create({ tag_id: tag.tagId, tag_name: tagRecord.tag_desc, user_id: userId }, { transaction: t });
+    }
+
+    // ── Triggers: delete + re-save ─────────────────────────────────────────
+    await model.user_trigger_map.destroy({ where: { user_id: userId }, transaction: t });
+    for (const trig of triggers) {
+      const trigRecord = await model.trigger_master.findByPk(trig.triggerId, { transaction: t });
+      if (!trigRecord) {
+        const err = new Error(`Trigger not found with id: ${trig.triggerId}`);
+        err.status = 404;
+        throw err;
+      }
+      await model.user_trigger_map.create({ trigger_id: trig.triggerId, trigger_name: trigRecord.trigger_desc, user_id: userId }, { transaction: t });
+    }
+
+    await t.commit();
+
+    // Return updated user entity (Java returns UserEntity directly)
+    const updated = await model.user_master.findByPk(userId, { raw: true });
+    return updated;
+
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser };
