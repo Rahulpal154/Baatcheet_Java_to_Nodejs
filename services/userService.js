@@ -536,4 +536,37 @@ const getUser = async (userId) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1261 — Delete User
+// Mirrors: UserServiceImpl.deleteUser()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Soft delete user and all relationships.
+ * Deletes from: user_master, user_tag_map, user_trigger_map, user_community_map
+ */
+const deleteUser = async (userId) => {
+  const t = await sequelize.transaction();
+  try {
+    const user = await model.user_master.findByPk(userId, { transaction: t });
+    if (!user) {
+      const err = new Error(`User not found with id: ${userId}`);
+      err.status = 404;
+      throw err;
+    }
+
+    await model.user_community_map.destroy({ where: { user_id: userId }, transaction: t });
+    await model.user_tag_map.destroy({ where: { user_id: userId }, transaction: t });
+    await model.user_trigger_map.destroy({ where: { user_id: userId }, transaction: t });
+    await model.user_master.destroy({ where: { user_id: userId }, transaction: t });
+
+    await t.commit();
+
+    return { success: true, message: `User deleted successfully`, userId };
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser };

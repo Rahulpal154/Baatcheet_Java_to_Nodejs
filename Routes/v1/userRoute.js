@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -368,3 +368,48 @@ module.exports = router;
 router.get('/:userId', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
 ], getUserById);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1261 — Delete User
+// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}:
+ *   delete:
+ *     summary: Delete user account
+ *     description: Delete user and all associated data (tags, triggers, communities)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:  { type: boolean, example: true }
+ *                 message:  { type: string, example: "User deleted successfully" }
+ *                 userId:   { type: integer, example: 42 }
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.delete('/:userId', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+], deleteUserById);
