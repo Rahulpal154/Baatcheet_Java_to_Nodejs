@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -413,3 +413,60 @@ router.get('/:userId', auth, [
 router.delete('/:userId', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
 ], deleteUserById);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1262 — Update Language for User
+// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}/language:
+ *   patch:
+ *     summary: Update user's preferred language
+ *     description: Change language preference to ENGLISH or HINDI
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - languageEnum
+ *             properties:
+ *               languageEnum: { type: integer, enum: [0, 1], example: 1, description: "0=ENGLISH, 1=HINDI" }
+ *     responses:
+ *       200:
+ *         description: Language updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 userId:       { type: integer, example: 42 }
+ *                 userName:     { type: string, example: "John Doe" }
+ *                 languageEnum: { type: integer, example: 1 }
+ *                 message:      { type: string, example: "Language updated to HINDI" }
+ *       400:
+ *         description: Invalid languageEnum value
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.patch('/:userId/language', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  body('languageEnum').isIn([0, 1]).withMessage('languageEnum must be 0 (ENGLISH) or 1 (HINDI)'),
+], updateLanguageById);

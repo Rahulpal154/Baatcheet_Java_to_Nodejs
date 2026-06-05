@@ -569,4 +569,42 @@ const deleteUser = async (userId) => {
   }
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1262 — Update Language for User
+// Mirrors: UserServiceImpl.updateLanguage()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Update user's preferred language.
+ * LanguageEnum: 0=ENGLISH, 1=HINDI
+ */
+const updateLanguage = async (userId, languageEnum) => {
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  if (typeof languageEnum !== 'number' || languageEnum < 0 || languageEnum > 1) {
+    const err = new Error(`Invalid languageEnum. Must be 0 (ENGLISH) or 1 (HINDI)`);
+    err.status = 400;
+    throw err;
+  }
+
+  await model.user_master.update(
+    { preferred_language: languageEnum, updated_on: new Date() },
+    { where: { user_id: userId } }
+  );
+
+  const updated = await model.user_master.findByPk(userId, { raw: true });
+
+  return {
+    userId: updated.user_id,
+    userName: updated.user_name,
+    languageEnum: updated.preferred_language,
+    message: `Language updated to ${languageEnum === 0 ? 'ENGLISH' : 'HINDI'}`,
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage };

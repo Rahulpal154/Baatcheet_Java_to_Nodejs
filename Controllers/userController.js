@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser, getUser, deleteUser } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -126,4 +126,24 @@ const deleteUserById = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1262 — Update Language for User
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateLanguageById = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId } = req.params;
+    const data = matchedData(req, { includeOptionals: true });
+
+    const result = await updateLanguage(Number(userId), data.languageEnum);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[updateLanguageById]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    if (err.status === 400) return res.status(400).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById };
