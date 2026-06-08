@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -470,3 +470,63 @@ router.patch('/:userId/language', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
   body('languageEnum').isIn([0, 1]).withMessage('languageEnum must be 0 (ENGLISH) or 1 (HINDI)'),
 ], updateLanguageById);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1263 — Read Story
+// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}/stories/{storyId}:
+ *   get:
+ *     summary: Read/retrieve a story by ID
+ *     description: Get complete story details including content, tags, and metadata
+ *     tags: [Stories]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *       - in: path
+ *         name: storyId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 100
+ *     responses:
+ *       200:
+ *         description: Story retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 storyId:         { type: integer, example: 100 }
+ *                 userId:          { type: integer, example: 42 }
+ *                 storyTitle:      { type: string, example: "My First Story" }
+ *                 storyDescription: { type: string }
+ *                 storyContent:    { type: string }
+ *                 storyStatus:     { type: string, example: "published" }
+ *                 storyViews:      { type: integer, example: 150 }
+ *                 storyLikes:      { type: integer, example: 25 }
+ *                 storyBookmarks:  { type: integer, example: 10 }
+ *                 isOwnStory:      { type: boolean, example: true }
+ *                 tags:            { type: array }
+ *                 createdOn:       { type: string, format: date-time }
+ *                 updatedOn:       { type: string, format: date-time }
+ *       404:
+ *         description: Story not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.get('/:userId/stories/:storyId', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
+], readStoryById);

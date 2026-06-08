@@ -607,4 +607,52 @@ const updateLanguage = async (userId, languageEnum) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1263 — Read Story
+// Mirrors: StoryServiceImpl.getStory() / readStory()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Retrieve story by ID.
+ * Returns complete story details with metadata.
+ */
+const readStory = async (userId, storyId) => {
+  const story = await model.story_master.findOne({
+    where: { id: storyId },
+    raw: true,
+  });
+
+  if (!story) {
+    const err = new Error(`Story not found with id: ${storyId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const tags = await model.story_tag_map.findAll({
+    where: { id: storyId },
+    attributes: ['tag_id'],
+    raw: true,
+  });
+
+  const bookmarks = await model.story_bookmark_map.count({
+    where: { id: storyId },
+  });
+
+  return {
+    storyId: story.id,
+    userId: story.user_id,
+    storyTitle: story.story_title,
+    storyDescription: story.story_description,
+    storyContent: story.story_content,
+    storyStatus: story.story_status,
+    storyViews: story.story_views || 0,
+    storyLikes: story.story_likes || 0,
+    storyBookmarks: bookmarks,
+    isOwnStory: story.user_id === userId,
+    createdOn: story.created_on,
+    updatedOn: story.updated_on,
+    tags: tags.map(t => ({ tagId: t.tag_id })),
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory };
