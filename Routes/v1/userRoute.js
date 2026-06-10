@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -530,3 +530,58 @@ router.get('/:userId/stories/:storyId', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
   param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
 ], readStoryById);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1264 — Add Story Bookmark
+// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}/stories/{storyId}/bookmark:
+ *   post:
+ *     summary: Add/save story to bookmarks
+ *     description: Bookmark a story for later reading
+ *     tags: [Bookmarks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *       - in: path
+ *         name: storyId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 100
+ *     responses:
+ *       201:
+ *         description: Story bookmarked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:      { type: boolean, example: true }
+ *                 bookmarkId:   { type: integer, example: 1 }
+ *                 userId:       { type: integer, example: 42 }
+ *                 storyId:      { type: integer, example: 100 }
+ *                 bookmarkedOn: { type: string, format: date-time }
+ *                 message:      { type: string, example: "Story bookmarked successfully" }
+ *       404:
+ *         description: User or story not found
+ *       409:
+ *         description: Story already bookmarked
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.post('/:userId/stories/:storyId/bookmark', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
+], addBookmark);

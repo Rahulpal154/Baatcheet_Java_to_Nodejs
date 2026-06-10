@@ -655,4 +655,55 @@ const readStory = async (userId, storyId) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1264 — Add Story Bookmark
+// Mirrors: BookmarkServiceImpl.addBookmark()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Add/create bookmark for a story.
+ * Saves story to user's bookmarks list.
+ */
+const addStoryBookmark = async (userId, storyId) => {
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const story = await model.story_master.findByPk(storyId, { raw: true });
+  if (!story) {
+    const err = new Error(`Story not found with id: ${storyId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const existing = await model.story_bookmark_map.findOne({
+    where: { user_id: userId, story_id: storyId },
+    raw: true,
+  });
+
+  if (existing) {
+    const err = new Error(`Story already bookmarked by this user`);
+    err.status = 409;
+    throw err;
+  }
+
+  const bookmark = await model.story_bookmark_map.create({
+    user_id: userId,
+    story_id: storyId,
+    bookmarked_on: new Date(),
+  });
+
+  return {
+    success: true,
+    bookmarkId: bookmark.id,
+    userId: userId,
+    storyId: storyId,
+    bookmarkedOn: bookmark.bookmarked_on,
+    message: `Story bookmarked successfully`,
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark };

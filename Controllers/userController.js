@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -164,4 +164,23 @@ const readStoryById = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1264 — Add Story Bookmark
+// ─────────────────────────────────────────────────────────────────────────────
+
+const addBookmark = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId, storyId } = req.params;
+
+    const result = await addStoryBookmark(Number(userId), Number(storyId));
+    return res.status(201).json(result);
+  } catch (err) {
+    console.error('[addBookmark]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    if (err.status === 409) return res.status(409).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark };
