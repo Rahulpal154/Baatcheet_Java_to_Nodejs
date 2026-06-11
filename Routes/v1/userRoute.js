@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -160,6 +160,77 @@ router.post('/login', [
     return true;
   }),
 ], loginUser);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1265 — Get User List
+// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users:
+ *   get:
+ *     summary: Get paginated list of all users
+ *     description: Retrieve users with pagination and optional search
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of users per page
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by userName or userEmail
+ *     responses:
+ *       200:
+ *         description: User list retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       userId:       { type: integer, example: 42 }
+ *                       userName:     { type: string, example: "John Doe" }
+ *                       userEmail:    { type: string }
+ *                       userMobile:   { type: integer }
+ *                       userAvatar:   { type: string }
+ *                       languageEnum: { type: integer }
+ *                       createdOn:    { type: string, format: date-time }
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     currentPage:    { type: integer, example: 1 }
+ *                     pageSize:       { type: integer, example: 10 }
+ *                     totalUsers:     { type: integer, example: 150 }
+ *                     totalPages:     { type: integer, example: 15 }
+ *                     hasNextPage:    { type: boolean, example: true }
+ *                     hasPreviousPage: { type: boolean, example: false }
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Invalid pagination parameters
+ */
+router.get('/', auth, getUserListHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT /users/:userId  (#1259)

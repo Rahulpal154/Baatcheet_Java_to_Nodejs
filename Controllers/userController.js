@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -183,4 +183,37 @@ const addBookmark = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1265 — Get User List
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getUserListHandler = async (req, res) => {
+  try {
+    // Use nullish coalescing (??) instead of ||
+    // so that page=0 and limit=0 are not silently converted
+    // to default values and can be validated correctly.
+    
+    // const page = parseInt(req.query.page) || 1;
+    // const limit = parseInt(req.query.limit) || 10;
+
+    const page = parseInt(req.query.page ?? 1);
+    const limit = parseInt(req.query.limit ?? 10);
+
+    const searchTerm = req.query.search || null;
+
+    if (page < 1) {
+      return res.status(422).json({ message: 'Page must be >= 1' });
+    }
+    if (limit < 1 || limit > 100) {
+      return res.status(422).json({ message: 'Limit must be between 1 and 100' });
+    }
+
+    const result = await getUserList(page, limit, searchTerm);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[getUserListHandler]', err.message);
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark ,getUserListHandler };

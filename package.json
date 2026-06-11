@@ -18,7 +18,8 @@
     "test:delete": "cross-env NODE_ENV=local npx jest tests/user.delete.test.js --forceExit --verbose",
     "test:language": "cross-env NODE_ENV=local npx jest tests/user.language.test.js --forceExit --verbose",
     "test:story.read": "cross-env NODE_ENV=local npx jest tests/user.story.read.test.js --forceExit --verbose",
-    "test:bookmark.add": "cross-env NODE_ENV=local npx jest tests/user.bookmark.add.test.js --forceExit --verbose"
+    "test:bookmark.add": "cross-env NODE_ENV=local npx jest tests/user.bookmark.add.test.js --forceExit --verbose",
+    "test:user.list": "cross-env NODE_ENV=local npx jest tests/user.list.test.js --forceExit --verbose"
   },
   "keywords": [],
   "author": "",

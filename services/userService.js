@@ -706,4 +706,58 @@ const addStoryBookmark = async (userId, storyId) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1265 — Get User List
+// Mirrors: UserServiceImpl.getUserList() / getAllUsers()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Retrieve paginated list of all users.
+ * Supports pagination and filtering.
+ */
+const getUserList = async (page = 1, limit = 10, searchTerm = null) => {
+  const offset = (page - 1) * limit;
+
+  let whereClause = {};
+  if (searchTerm) {
+    whereClause = {
+      [model.Sequelize.Op.or]: [
+        { user_name: { [model.Sequelize.Op.like]: `%${searchTerm}%` } },
+        { user_email: { [model.Sequelize.Op.like]: `%${searchTerm}%` } },
+      ],
+    };
+  }
+
+  const { count, rows } = await model.user_master.findAndCountAll({
+    where: whereClause,
+    attributes: ['user_id', 'user_name', 'user_email', 'user_mobile', 'user_avatar', 'preferred_language', 'created_on'],
+    offset: offset,
+    limit: limit,
+    order: [['user_id', 'DESC']],
+    raw: true,
+  });
+
+  const totalPages = Math.ceil(count / limit);
+
+  return {
+    users: rows.map(user => ({
+      userId: user.user_id,
+      userName: user.user_name,
+      userEmail: user.user_email,
+      userMobile: user.user_mobile,
+      userAvatar: user.user_avatar,
+      languageEnum: user.preferred_language,
+      createdOn: user.created_on,
+    })),
+    pagination: {
+      currentPage: page,
+      pageSize: limit,
+      totalUsers: count,
+      totalPages: totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+    },
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList };
