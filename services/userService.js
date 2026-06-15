@@ -760,4 +760,51 @@ const getUserList = async (page = 1, limit = 10, searchTerm = null) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1266 — Delete Bookmark
+// Mirrors: BookmarkServiceImpl.removeBookmark()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Delete/remove bookmark for a story.
+ * Removes story from user's bookmarks.
+ */
+const deleteStoryBookmark = async (userId, storyId) => {
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const story = await model.story_master.findByPk(storyId, { raw: true });
+  if (!story) {
+    const err = new Error(`Story not found with id: ${storyId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const bookmark = await model.story_bookmark_map.findOne({
+    where: { user_id: userId, story_id: storyId },
+    raw: true,
+  });
+
+  if (!bookmark) {
+    const err = new Error(`Bookmark not found for this user and story`);
+    err.status = 404;
+    throw err;
+  }
+
+  await model.story_bookmark_map.destroy({
+    where: { user_id: userId, story_id: storyId },
+  });
+
+  return {
+    success: true,
+    userId: userId,
+    storyId: storyId,
+    message: `Story bookmark removed successfully`,
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark };

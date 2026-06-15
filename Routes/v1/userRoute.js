@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -656,3 +656,54 @@ router.post('/:userId/stories/:storyId/bookmark', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
   param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
 ], addBookmark);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1266 — Delete Bookmark
+// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}/stories/{storyId}/bookmark:
+ *   delete:
+ *     summary: Remove/delete story from bookmarks
+ *     description: Remove a bookmarked story
+ *     tags: [Bookmarks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *       - in: path
+ *         name: storyId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 100
+ *     responses:
+ *       200:
+ *         description: Bookmark removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:  { type: boolean, example: true }
+ *                 userId:   { type: integer, example: 42 }
+ *                 storyId:  { type: integer, example: 100 }
+ *                 message:  { type: string }
+ *       404:
+ *         description: User, story, or bookmark not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.delete('/:userId/stories/:storyId/bookmark', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
+], deleteBookmark);
