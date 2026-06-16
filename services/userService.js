@@ -807,4 +807,162 @@ const deleteStoryBookmark = async (userId, storyId) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1267 — User Submissions (Add, Get, Delete)
+// Mirrors: SubmissionServiceImpl.addSubmission() / getSubmission() / deleteSubmission()
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Create/Add a new user submission.
+ * Saves submission data to database.
+ */
+const addUserSubmission = async (userId, submissionData) => {
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  if (!submissionData.submissionTitle || submissionData.submissionTitle.trim() === '') {
+    const err = new Error(`Submission title is required`);
+    err.status = 400;
+    throw err;
+  }
+
+  if (!submissionData.submissionContent || submissionData.submissionContent.trim() === '') {
+    const err = new Error(`Submission content is required`);
+    err.status = 400;
+    throw err;
+  }
+
+  const submission = await model.user_submission.create({
+    user_id: userId,
+    submission_title: submissionData.submissionTitle,
+    submission_content: submissionData.submissionContent,
+    submission_status: submissionData.submissionStatus || 'pending',
+    created_on: new Date(),
+  });
+
+  return {
+    submissionId: submission.submission_id,
+    userId: submission.user_id,
+    submissionTitle: submission.submission_title,
+    submissionContent: submission.submission_content,
+    submissionStatus: submission.submission_status,
+    createdOn: submission.created_on,
+    message: `Submission created successfully`,
+  };
+};
+
+/**
+ * Retrieve a single submission by ID.
+ */
+const getUserSubmission = async (userId, submissionId) => {
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const submission = await model.user_submission.findOne({
+    where: { submission_id: submissionId, user_id: userId },
+    raw: true,
+  });
+
+  if (!submission) {
+    const err = new Error(`Submission not found with id: ${submissionId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  return {
+    submissionId: submission.submission_id,
+    userId: submission.user_id,
+    submissionTitle: submission.submission_title,
+    submissionContent: submission.submission_content,
+    submissionStatus: submission.submission_status,
+    createdOn: submission.created_on,
+    updatedOn: submission.updated_on,
+  };
+};
+
+/**
+ * Get all submissions for a user (paginated).
+ */
+const getUserSubmissions = async (userId, page = 1, limit = 10) => {
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const offset = (page - 1) * limit;
+
+  const { count, rows } = await model.user_submission.findAndCountAll({
+    where: { user_id: userId },
+    attributes: ['submission_id', 'submission_title', 'submission_content', 'submission_status', 'created_on'],
+    offset: offset,
+    limit: limit,
+    order: [['submission_id', 'DESC']],
+    raw: true,
+  });
+
+  const totalPages = Math.ceil(count / limit);
+
+  return {
+    submissions: rows.map(sub => ({
+      submissionId: sub.submission_id,
+      submissionTitle: sub.submission_title,
+      submissionContent: sub.submission_content,
+      submissionStatus: sub.submission_status,
+      createdOn: sub.created_on,
+    })),
+    pagination: {
+      currentPage: page,
+      pageSize: limit,
+      totalSubmissions: count,
+      totalPages: totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+    },
+  };
+};
+
+/**
+ * Delete a user submission.
+ */
+const deleteUserSubmission = async (userId, submissionId) => {
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const submission = await model.user_submission.findOne({
+    where: { submission_id: submissionId, user_id: userId },
+    raw: true,
+  });
+
+  if (!submission) {
+    const err = new Error(`Submission not found with id: ${submissionId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  await model.user_submission.destroy({
+    where: { submission_id: submissionId, user_id: userId },
+  });
+
+  return {
+    success: true,
+    submissionId: submissionId,
+    userId: userId,
+    message: `Submission deleted successfully`,
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission };

@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -707,3 +707,171 @@ router.delete('/:userId/stories/:storyId/bookmark', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
   param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
 ], deleteBookmark);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1267 — User Submissions (Add, Get, Delete)
+// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}/submissions:
+ *   post:
+ *     summary: Create a new user submission
+ *     description: Add a new submission for a user
+ *     tags: [Submissions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - submissionTitle
+ *               - submissionContent
+ *             properties:
+ *               submissionTitle: { type: string, example: "My Submission" }
+ *               submissionContent: { type: string, example: "Submission content here" }
+ *               submissionStatus: { type: string, enum: ["pending", "approved", "rejected"], default: "pending" }
+ *     responses:
+ *       201:
+ *         description: Submission created successfully
+ *       400:
+ *         description: Missing required fields
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.post('/:userId/submissions', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  body('submissionTitle').trim().notEmpty().withMessage('submissionTitle is required'),
+  body('submissionContent').trim().notEmpty().withMessage('submissionContent is required'),
+  body('submissionStatus').optional().isIn(['pending', 'approved', 'rejected']).withMessage('submissionStatus must be pending, approved, or rejected'),
+], addSubmission);
+
+/**
+ * @swagger
+ * /users/{userId}/submissions/{submissionId}:
+ *   get:
+ *     summary: Get a specific submission
+ *     description: Retrieve details of a specific submission
+ *     tags: [Submissions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *     responses:
+ *       200:
+ *         description: Submission retrieved
+ *       404:
+ *         description: User or submission not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.get('/:userId/submissions/:submissionId', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  param('submissionId').isInt({ min: 1 }).withMessage('submissionId must be a positive integer'),
+], getSubmission);
+
+/**
+ * @swagger
+ * /users/{userId}/submissions:
+ *   get:
+ *     summary: Get all submissions for a user
+ *     description: Retrieve paginated list of user submissions
+ *     tags: [Submissions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Submissions list retrieved
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Invalid pagination parameters
+ */
+router.get('/:userId/submissions', auth, getSubmissions);
+
+/**
+ * @swagger
+ * /users/{userId}/submissions/{submissionId}:
+ *   delete:
+ *     summary: Delete a submission
+ *     description: Remove a user submission
+ *     tags: [Submissions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *       - in: path
+ *         name: submissionId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *     responses:
+ *       200:
+ *         description: Submission deleted
+ *       404:
+ *         description: User or submission not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.delete('/:userId/submissions/:submissionId', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  param('submissionId').isInt({ min: 1 }).withMessage('submissionId must be a positive integer'),
+], deleteSubmission);

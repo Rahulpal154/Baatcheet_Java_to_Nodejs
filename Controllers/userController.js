@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -234,4 +234,78 @@ const deleteBookmark = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark ,getUserListHandler, deleteBookmark };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1267 — User Submissions (Add, Get, Delete)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const addSubmission = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId } = req.params;
+    const data = matchedData(req, { includeOptionals: true });
+
+    const result = await addUserSubmission(Number(userId), {
+      submissionTitle: data.submissionTitle,
+      submissionContent: data.submissionContent,
+      submissionStatus: data.submissionStatus || 'pending',
+    });
+    return res.status(201).json(result);
+  } catch (err) {
+    console.error('[addSubmission]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    if (err.status === 400) return res.status(400).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+const getSubmission = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId, submissionId } = req.params;
+
+    const result = await getUserSubmission(Number(userId), Number(submissionId));
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[getSubmission]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+const getSubmissions = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    if (page < 1) {
+      return res.status(422).json({ message: 'Page must be >= 1' });
+    }
+    if (limit < 1 || limit > 100) {
+      return res.status(422).json({ message: 'Limit must be between 1 and 100' });
+    }
+
+    const result = await getUserSubmissions(Number(userId), page, limit);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[getSubmissions]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+const deleteSubmission = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId, submissionId } = req.params;
+
+    const result = await deleteUserSubmission(Number(userId), Number(submissionId));
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[deleteSubmission]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission };
