@@ -20,7 +20,7 @@ const generateUserToken = (user) => {
       email_id: user.user_email,
       user_name: user.user_name,
       mobile_number: user.user_mobile,
-      preferred_language: user.preferred_language, // ordinal: 0=ENGLISH, 1=HINDI
+      preferred_language: user.preferred_language,
       user_avatar: user.user_avatar,
     },
     config().JWT_KEY,
@@ -31,14 +31,6 @@ const generateUserToken = (user) => {
 /**
  * Save / Register a new user.
  * Mirrors: UserServiceImpl.saveUser()
- *
- * Validation rules (from Java validateUserEntity / validateEmail / validateMobile):
- *  isEmailLogin=true  → email must be unique (email+isEmailLogin=true),
- *                       mobile must be globally unique if provided,
- *                       email must not exist for mobile-login users either
- *  isEmailLogin=false → mobile must be globally unique (mobile+isEmailLogin=false),
- *                       mobile must not exist for email-login users,
- *                       email (if provided) must be globally unique
  */
 const saveUser = async (userData) => {
   const t = await sequelize.transaction();
@@ -60,16 +52,14 @@ const saveUser = async (userData) => {
       isEmailLogin = true,
     } = userData;
 
-    // ── Duplicate-check logic (Java: validateEmail / validateMobile) ──────────
+    // ── Duplicate-check logic ──────────────────────────────────────────────
     if (isEmailLogin) {
-      // email cannot be null
       if (!userEmail) {
         const err = new Error('User Email cannot be null');
         err.status = 400;
         throw err;
       }
 
-      // email must not exist for email-login users
       const emailLoginCount = await model.user_master.count({
         where: { user_email: userEmail, is_email_login: true },
         transaction: t,
@@ -80,7 +70,6 @@ const saveUser = async (userData) => {
         throw err;
       }
 
-      // if mobile provided, must be globally unique
       if (userMobile) {
         const mobileCount = await model.user_master.count({
           where: { user_mobile: userMobile },
@@ -93,7 +82,6 @@ const saveUser = async (userData) => {
         }
       }
 
-      // email must not exist even for mobile-login users
       const emailMobileCount = await model.user_master.count({
         where: { user_email: userEmail },
         transaction: t,
@@ -105,7 +93,6 @@ const saveUser = async (userData) => {
       }
 
     } else {
-      // mobile-login: mobile must not exist for mobile-login users
       const mobileLoginCount = await model.user_master.count({
         where: { user_mobile: userMobile, is_email_login: false },
         transaction: t,
@@ -116,7 +103,6 @@ const saveUser = async (userData) => {
         throw err;
       }
 
-      // mobile must be globally unique (no email-login user with same mobile)
       const mobileGlobalCount = await model.user_master.count({
         where: { user_mobile: userMobile },
         transaction: t,
@@ -127,7 +113,6 @@ const saveUser = async (userData) => {
         throw err;
       }
 
-      // email (if provided and non-empty) must be globally unique
       if (userEmail && userEmail.trim() !== '') {
         const emailCount = await model.user_master.count({
           where: { user_email: userEmail },
@@ -141,8 +126,7 @@ const saveUser = async (userData) => {
       }
     }
 
-    // ── Resolve gender string for DB ENUM ────────────────────────────────────
-    // Java sends enum ordinal (int) or name (string); DB stores as ENUM string
+    // ── Resolve gender string for DB ENUM ──────────────────────────────────
     let genderDbValue;
     if (typeof userGenderId === 'number') {
       genderDbValue = GenderEnum[userGenderId] || 'OTHER';
@@ -150,16 +134,16 @@ const saveUser = async (userData) => {
       genderDbValue = String(userGenderId).toUpperCase();
     }
 
-    // ── Resolve language ordinal for DB TINYINT ───────────────────────────────
+    // ── Resolve language ordinal for DB TINYINT ────────────────────────────
     let languageOrdinal;
     if (typeof languageEnum === 'number') {
       languageOrdinal = languageEnum;
     } else {
       languageOrdinal = LanguageEnum.indexOf(String(languageEnum).toUpperCase());
-      if (languageOrdinal < 0) languageOrdinal = 0; // default ENGLISH
+      if (languageOrdinal < 0) languageOrdinal = 0;
     }
 
-    // ── Create user (Java: isParticipant set to false) ────────────────────────
+    // ── Create user ────────────────────────────────────────────────────────
     const savedUser = await model.user_master.create(
       {
         user_name: userName,
@@ -179,7 +163,7 @@ const saveUser = async (userData) => {
       { transaction: t }
     );
 
-    // ── Process tags (Java: processUserTags / saveUserTags) ───────────────────
+    // ── Process tags ───────────────────────────────────────────────────────
     const savedTags = [];
     for (const tag of userTag) {
       const tagRecord = await model.tag_master.findByPk(tag.tagId, { transaction: t });
@@ -199,7 +183,7 @@ const saveUser = async (userData) => {
       savedTags.push(savedTag.get({ plain: true }));
     }
 
-    // ── Process triggers (Java: processUserTriggers / saveUserTriggers) ───────
+    // ── Process triggers ───────────────────────────────────────────────────
     const savedTriggers = [];
     for (const trigger of triggers) {
       const triggerRecord = await model.trigger_master.findByPk(trigger.triggerId, { transaction: t });
@@ -219,10 +203,9 @@ const saveUser = async (userData) => {
       savedTriggers.push(savedTrigger.get({ plain: true }));
     }
 
-    // ── Process communities (Java: processUserCommunities) ────────────────────
+    // ── Process communities ────────────────────────────────────────────────
     const savedCommunities = [];
     for (const community of userCommunity) {
-      // community_id can be ordinal int or enum string name
       let communityOrdinal;
       if (typeof community.communityId === 'number') {
         communityOrdinal = community.communityId;
@@ -246,7 +229,7 @@ const saveUser = async (userData) => {
 
     await t.commit();
 
-    // ── Build UserResponseDto (mirrors Java buildUserResponseDto) ─────────────
+    // ── Build UserResponseDto ──────────────────────────────────────────────
     const token = generateUserToken(savedUser);
 
     return {
@@ -254,8 +237,8 @@ const saveUser = async (userData) => {
       userName: savedUser.user_name,
       userAge: savedUser.user_age,
       userMobile: savedUser.user_mobile,
-      userGenderId: GenderEnum.indexOf(savedUser.user_gender_id), // ordinal
-      languageEnum: savedUser.preferred_language,                  // ordinal
+      userGenderId: GenderEnum.indexOf(savedUser.user_gender_id),
+      languageEnum: savedUser.preferred_language,
       locationId: savedUser.location_id,
       locationName: savedUser.location_name,
       userEmail: savedUser.user_email,
@@ -274,24 +257,9 @@ const saveUser = async (userData) => {
   }
 };
 
-// exports moved to bottom
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1257 — Login
-// Mirrors: UserServiceImpl.checkExistingUser()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Check if user exists by email OR mobile and return JWT.
- * Java: UserServiceImpl.checkExistingUser(UserLoginRequestDto, HttpServletResponse)
- *
- * Logic:
- *  - if userEmail provided → findByUserEmail()
- *  - else               → findByUserMobile()
- *  - if found  → userExists="TRUE", return userId + jwtToken + isEmailLogin
- *  - if not found → userExists="FALSE" (no error thrown — Java returns 200)
- *
- * Cookie-setting is handled in the controller (mirrors CookieManager behaviour).
+ * Mirrors: UserServiceImpl.checkExistingUser()
  */
 const checkExistingUser = async (userEmail, userMobile) => {
   let user = null;
@@ -301,10 +269,9 @@ const checkExistingUser = async (userEmail, userMobile) => {
       where: { user_email: userEmail },
       raw: true,
     });
-    // Java: also persist isEmailLogin flag on the found record
     if (user) {
       await model.user_master.update(
-        { is_email_login: user.is_email_login }, // preserves existing value
+        { is_email_login: user.is_email_login },
         { where: { user_id: user.user_id } }
       );
     }
@@ -335,24 +302,9 @@ const checkExistingUser = async (userEmail, userMobile) => {
   };
 };
 
-// exports at bottom
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1259 — Update User
-// Mirrors: UserServiceImpl.updateUser()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Update existing user profile.
- * Java: UserServiceImpl.updateUser(UserEntity, int id, String token)
- *
- * Logic:
- *  - Find user by id (404 if not found)
- *  - Update basic info (name, age, avatar, gender, language, location)
- *  - if !isEmailLogin → update email (mobile-login users can change email)
- *  - if isEmailLogin  → update mobile
- *  - Delete + re-save communities, tags, triggers
- *  - Duplicate check for email/mobile on update (409 if clash)
+ * Mirrors: UserServiceImpl.updateUser()
  */
 const updateUser = async (userId, userData) => {
   const t = await sequelize.transaction();
@@ -370,7 +322,6 @@ const updateUser = async (userId, userData) => {
       userTag = [], triggers = [], userCommunity = [],
     } = userData;
 
-    // Resolve gender
     let genderDbValue;
     if (typeof userGenderId === 'number') {
       genderDbValue = GenderEnum[userGenderId] || existing.user_gender_id;
@@ -378,7 +329,6 @@ const updateUser = async (userId, userData) => {
       genderDbValue = String(userGenderId).toUpperCase();
     }
 
-    // Resolve language
     let languageOrdinal;
     if (typeof languageEnum === 'number') {
       languageOrdinal = languageEnum;
@@ -387,7 +337,6 @@ const updateUser = async (userId, userData) => {
       if (languageOrdinal < 0) languageOrdinal = existing.preferred_language;
     }
 
-    // Build update fields
     const updateFields = {
       user_name:          userName      !== undefined ? userName      : existing.user_name,
       user_age:           userAge       !== undefined ? userAge       : existing.user_age,
@@ -399,10 +348,8 @@ const updateUser = async (userId, userData) => {
       updated_on:         new Date(),
     };
 
-    // Java: if !isEmailLogin → update email; if isEmailLogin → update mobile
     if (!existing.is_email_login) {
       if (userEmail !== undefined && userEmail !== existing.user_email) {
-        // Check duplicate email globally
         const dup = await model.user_master.count({
           where: { user_email: userEmail },
           transaction: t,
@@ -416,7 +363,6 @@ const updateUser = async (userId, userData) => {
       }
     } else {
       if (userMobile !== undefined && userMobile !== existing.user_mobile) {
-        // Check duplicate mobile globally
         const dup = await model.user_master.count({
           where: { user_mobile: userMobile },
           transaction: t,
@@ -435,7 +381,6 @@ const updateUser = async (userId, userData) => {
       transaction: t,
     });
 
-    // ── Communities: delete + re-save ─────────────────────────────────────
     await model.user_community_map.destroy({ where: { user_id: userId }, transaction: t });
     for (const c of userCommunity) {
       let ordinal = typeof c.communityId === 'number' ? c.communityId
@@ -444,7 +389,6 @@ const updateUser = async (userId, userData) => {
       await model.user_community_map.create({ community_id: ordinal, user_id: userId }, { transaction: t });
     }
 
-    // ── Tags: delete + re-save ─────────────────────────────────────────────
     await model.user_tag_map.destroy({ where: { user_id: userId }, transaction: t });
     for (const tag of userTag) {
       const tagRecord = await model.tag_master.findByPk(tag.tagId, { transaction: t });
@@ -456,7 +400,6 @@ const updateUser = async (userId, userData) => {
       await model.user_tag_map.create({ tag_id: tag.tagId, tag_name: tagRecord.tag_desc, user_id: userId }, { transaction: t });
     }
 
-    // ── Triggers: delete + re-save ─────────────────────────────────────────
     await model.user_trigger_map.destroy({ where: { user_id: userId }, transaction: t });
     for (const trig of triggers) {
       const trigRecord = await model.trigger_master.findByPk(trig.triggerId, { transaction: t });
@@ -470,7 +413,6 @@ const updateUser = async (userId, userData) => {
 
     await t.commit();
 
-    // Return updated user entity (Java returns UserEntity directly)
     const updated = await model.user_master.findByPk(userId, { raw: true });
     return updated;
 
@@ -480,14 +422,9 @@ const updateUser = async (userId, userData) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1260 — Get User
-// Mirrors: UserServiceImpl.getUser()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Retrieve user profile by ID with all relationships (tags, triggers, communities).
- * Returns complete UserResponseDto matching Java response.
+ * Retrieve user profile by ID with all relationships.
+ * Mirrors: UserServiceImpl.getUser()
  */
 const getUser = async (userId) => {
   const user = await model.user_master.findByPk(userId, { raw: true });
@@ -536,14 +473,9 @@ const getUser = async (userId) => {
   };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1261 — Delete User
-// Mirrors: UserServiceImpl.deleteUser()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Soft delete user and all relationships.
- * Deletes from: user_master, user_tag_map, user_trigger_map, user_community_map
+ * Delete user and all relationships.
+ * Mirrors: UserServiceImpl.deleteUser()
  */
 const deleteUser = async (userId) => {
   const t = await sequelize.transaction();
@@ -569,14 +501,9 @@ const deleteUser = async (userId) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1262 — Update Language for User
-// Mirrors: UserServiceImpl.updateLanguage()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Update user's preferred language.
- * LanguageEnum: 0=ENGLISH, 1=HINDI
+ * Mirrors: UserServiceImpl.updateLanguage()
  */
 const updateLanguage = async (userId, languageEnum) => {
   const user = await model.user_master.findByPk(userId, { raw: true });
@@ -607,14 +534,9 @@ const updateLanguage = async (userId, languageEnum) => {
   };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1263 — Read Story
-// Mirrors: StoryServiceImpl.getStory() / readStory()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Retrieve story by ID.
- * Returns complete story details with metadata.
+ * Mirrors: StoryServiceImpl.getStory()
  */
 const readStory = async (userId, storyId) => {
   const story = await model.story_master.findOne({
@@ -634,20 +556,16 @@ const readStory = async (userId, storyId) => {
     raw: true,
   });
 
-  const bookmarks = await model.story_bookmark_map.count({
-    where: { id: storyId },
-  });
-
   return {
     storyId: story.id,
     userId: story.user_id,
-    storyTitle: story.story_title,
-    storyDescription: story.story_description,
-    storyContent: story.story_content,
+    storyTitle: story.title,
+    storyDescription: story.story_desc,
+    storyContent: story.story_background_card_uri,
     storyStatus: story.story_status,
-    storyViews: story.story_views || 0,
-    storyLikes: story.story_likes || 0,
-    storyBookmarks: bookmarks,
+    storyViews: 0,
+    storyLikes: 0,
+    storyBookmarks: 0,
     isOwnStory: story.user_id === userId,
     createdOn: story.created_on,
     updatedOn: story.updated_on,
@@ -655,14 +573,9 @@ const readStory = async (userId, storyId) => {
   };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1264 — Add Story Bookmark
-// Mirrors: BookmarkServiceImpl.addBookmark()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Add/create bookmark for a story.
- * Saves story to user's bookmarks list.
+ * Add bookmark for a story.
+ * Mirrors: BookmarkServiceImpl.addBookmark()
  */
 const addStoryBookmark = async (userId, storyId) => {
   const user = await model.user_master.findByPk(userId, { raw: true });
@@ -679,7 +592,7 @@ const addStoryBookmark = async (userId, storyId) => {
     throw err;
   }
 
-  const existing = await model.story_bookmark_map.findOne({
+  const existing = await model.user_story_map.findOne({
     where: { user_id: userId, story_id: storyId },
     raw: true,
   });
@@ -690,10 +603,9 @@ const addStoryBookmark = async (userId, storyId) => {
     throw err;
   }
 
-  const bookmark = await model.story_bookmark_map.create({
+  const bookmark = await model.user_story_map.create({
     user_id: userId,
     story_id: storyId,
-    bookmarked_on: new Date(),
   });
 
   return {
@@ -701,19 +613,14 @@ const addStoryBookmark = async (userId, storyId) => {
     bookmarkId: bookmark.id,
     userId: userId,
     storyId: storyId,
-    bookmarkedOn: bookmark.bookmarked_on,
+    bookmarkedOn: new Date(),
     message: `Story bookmarked successfully`,
   };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1265 — Get User List
-// Mirrors: UserServiceImpl.getUserList() / getAllUsers()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Retrieve paginated list of all users.
- * Supports pagination and filtering.
+ * Get paginated list of all users.
+ * Mirrors: UserServiceImpl.getUserList()
  */
 const getUserList = async (page = 1, limit = 10, searchTerm = null) => {
   const offset = (page - 1) * limit;
@@ -760,14 +667,9 @@ const getUserList = async (page = 1, limit = 10, searchTerm = null) => {
   };
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1266 — Delete Bookmark
-// Mirrors: BookmarkServiceImpl.removeBookmark()
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Delete/remove bookmark for a story.
- * Removes story from user's bookmarks.
+ * Mirrors: BookmarkServiceImpl.removeBookmark()
  */
 const deleteStoryBookmark = async (userId, storyId) => {
   const user = await model.user_master.findByPk(userId, { raw: true });
@@ -784,7 +686,7 @@ const deleteStoryBookmark = async (userId, storyId) => {
     throw err;
   }
 
-  const bookmark = await model.story_bookmark_map.findOne({
+  const bookmark = await model.user_story_map.findOne({
     where: { user_id: userId, story_id: storyId },
     raw: true,
   });
@@ -795,7 +697,7 @@ const deleteStoryBookmark = async (userId, storyId) => {
     throw err;
   }
 
-  await model.story_bookmark_map.destroy({
+  await model.user_story_map.destroy({
     where: { user_id: userId, story_id: storyId },
   });
 
@@ -808,13 +710,16 @@ const deleteStoryBookmark = async (userId, storyId) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1267 — User Submissions (Add, Get, Delete)
-// Mirrors: SubmissionServiceImpl.addSubmission() / getSubmission() / deleteSubmission()
+// ✅ FIXED: Issue #1267 — User Submissions (Add, Get, Delete)
+// ✅ Key Fix: Use correct database column names (story_title, story_description, story_status)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Create/Add a new user submission.
- * Saves submission data to database.
+ * ✅ FIXED: Maps incoming camelCase to database snake_case columns
+ *   - submissionTitle → story_title
+ *   - submissionContent → story_description
+ *   - submissionStatus → story_status (0=pending, 1=approved, 2=rejected)
  */
 const addUserSubmission = async (userId, submissionData) => {
   const user = await model.user_master.findByPk(userId, { raw: true });
@@ -836,20 +741,30 @@ const addUserSubmission = async (userId, submissionData) => {
     throw err;
   }
 
+  // Convert status string to ordinal (0=pending, 1=approved, 2=rejected)
+  let statusOrdinal = 0; // default: pending
+  if (submissionData.submissionStatus) {
+    const statusMap = { pending: 0, approved: 1, rejected: 2 };
+    statusOrdinal = typeof submissionData.submissionStatus === 'string'
+      ? (statusMap[submissionData.submissionStatus] || 0)
+      : submissionData.submissionStatus;
+  }
+
   const submission = await model.user_submission.create({
     user_id: userId,
-    submission_title: submissionData.submissionTitle,
-    submission_content: submissionData.submissionContent,
-    submission_status: submissionData.submissionStatus || 'pending',
+    story_title: submissionData.submissionTitle,           // ✅ FIXED: Map to story_title
+    story_description: submissionData.submissionContent,   // ✅ FIXED: Map to story_description
+    story_status: statusOrdinal,                           // ✅ FIXED: Map to story_status
     created_on: new Date(),
+    updated_on: new Date(),
   });
 
   return {
     submissionId: submission.submission_id,
     userId: submission.user_id,
-    submissionTitle: submission.submission_title,
-    submissionContent: submission.submission_content,
-    submissionStatus: submission.submission_status,
+    submissionTitle: submission.story_title,              // ✅ FIXED: Map back to camelCase
+    submissionContent: submission.story_description,      // ✅ FIXED: Map back to camelCase
+    submissionStatus: ['pending', 'approved', 'rejected'][submission.story_status] || 'pending',
     createdOn: submission.created_on,
     message: `Submission created successfully`,
   };
@@ -880,9 +795,9 @@ const getUserSubmission = async (userId, submissionId) => {
   return {
     submissionId: submission.submission_id,
     userId: submission.user_id,
-    submissionTitle: submission.submission_title,
-    submissionContent: submission.submission_content,
-    submissionStatus: submission.submission_status,
+    submissionTitle: submission.story_title,
+    submissionContent: submission.story_description,
+    submissionStatus: ['pending', 'approved', 'rejected'][submission.story_status] || 'pending',
     createdOn: submission.created_on,
     updatedOn: submission.updated_on,
   };
@@ -890,6 +805,9 @@ const getUserSubmission = async (userId, submissionId) => {
 
 /**
  * Get all submissions for a user (paginated).
+ * ✅ CRITICAL FIX: Use correct database column names in query
+ *    - attributes: ['submission_id', 'story_title', 'story_description', 'story_status', ...]
+ *    - NOT: ['submission_id', 'submissionTitle', 'submissionContent', ...]
  */
 const getUserSubmissions = async (userId, page = 1, limit = 10) => {
   const user = await model.user_master.findByPk(userId, { raw: true });
@@ -899,11 +817,25 @@ const getUserSubmissions = async (userId, page = 1, limit = 10) => {
     throw err;
   }
 
+  // ✅ Validate pagination before querying
+  if (page < 1) {
+    const err = new Error('Page must be >= 1');
+    err.status = 422;
+    throw err;
+  }
+  if (limit < 1 || limit > 100) {
+    const err = new Error('Limit must be between 1 and 100');
+    err.status = 422;
+    throw err;
+  }
+
   const offset = (page - 1) * limit;
 
+  // ✅ CRITICAL FIX: Use actual database columns (story_title, story_description, story_status)
+  // This prevents: "Unknown column 'submissionTitle' in 'field list'"
   const { count, rows } = await model.user_submission.findAndCountAll({
     where: { user_id: userId },
-    attributes: ['submission_id', 'submission_title', 'submission_content', 'submission_status', 'created_on'],
+    attributes: ['submission_id', 'story_title', 'story_description', 'story_status', 'created_on'],
     offset: offset,
     limit: limit,
     order: [['submission_id', 'DESC']],
@@ -915,9 +847,9 @@ const getUserSubmissions = async (userId, page = 1, limit = 10) => {
   return {
     submissions: rows.map(sub => ({
       submissionId: sub.submission_id,
-      submissionTitle: sub.submission_title,
-      submissionContent: sub.submission_content,
-      submissionStatus: sub.submission_status,
+      submissionTitle: sub.story_title,           // Map from snake_case
+      submissionContent: sub.story_description,   // Map from snake_case
+      submissionStatus: ['pending', 'approved', 'rejected'][sub.story_status] || 'pending',
       createdOn: sub.created_on,
     })),
     pagination: {

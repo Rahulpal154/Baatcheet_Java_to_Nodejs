@@ -275,8 +275,11 @@ const getSubmission = async (req, res) => {
 const getSubmissions = async (req, res) => {
   try {
     const { userId } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    // const page = parseInt(req.query.page) || 1;
+    // const limit = parseInt(req.query.limit) || 10;
+
+    const page = parseInt(req.query.page ?? 1);
+    const limit = parseInt(req.query.limit ?? 10);
 
     if (page < 1) {
       return res.status(422).json({ message: 'Page must be >= 1' });

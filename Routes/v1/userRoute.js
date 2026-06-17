@@ -334,7 +334,7 @@ router.get('/', auth, getUserListHandler);
  *                 user_age:          { type: integer, example: 26 }
  *                 user_mobile:       { type: integer, example: 9876543210 }
  *                 user_gender_id:    { type: string, example: "FEMALE" }
- *                 preferred_language:{ type: integer, example: 1 }
+ *                 preferred_language: { type: integer, example: 1 }
  *                 location_id:       { type: integer, example: 55 }
  *                 location_name:     { type: string, example: "Delhi" }
  *                 user_email:        { type: string, example: "priya@example.com" }
