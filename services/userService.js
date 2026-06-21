@@ -922,4 +922,81 @@ const deleteUserSubmission = async (userId, submissionId) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1268 — Get User Search
+// Mirrors: UserServiceImpl.getUserSearch() / UserRepository searchUsers LIKE query
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Search users by name or email with 0-based page-index pagination.
+ *
+ * Java contract (from UserController.getUserSearch):
+ *   GET /users/search?query=<string>&pageIndex=<int>&visitorId=<optional>
+ *   - pageIndex is 0-based (Java Spring Page<T>); page size is fixed at 10.
+ *   - Authentication is optional (public path in Java Spring Security allowlist).
+ *   - Searches user_name and user_email with LIKE %query%.
+ *   - Returns account details / search result object.
+ *
+ * Database tables used:
+ *   - user_master (primary search target)
+ *
+ * @param {string}  query      - Search term (user name or email fragment)
+ * @param {number}  pageIndex  - 0-based page index (default 0)
+ * @param {string}  visitorId  - Optional visitor UUID (passed through, not used in DB query)
+ * @returns {Object} Search result payload
+ */
+const getUserSearch = async (query, pageIndex = 0, visitorId = null) => {
+  // Fixed page size matching Java PageRequest.of(pageIndex, 10)
+  const PAGE_SIZE = 10;
+  const offset = pageIndex * PAGE_SIZE;
+
+  // Build LIKE filter — empty/blank query returns all users (mirrors Java behaviour)
+  let whereClause = {};
+  if (query && query.trim() !== '') {
+    whereClause = {
+      [model.Sequelize.Op.or]: [
+        { user_name:  { [model.Sequelize.Op.like]: `%${query.trim()}%` } },
+        { user_email: { [model.Sequelize.Op.like]: `%${query.trim()}%` } },
+      ],
+    };
+  }
+
+  const { count, rows } = await model.user_master.findAndCountAll({
+    where: whereClause,
+    attributes: [
+      'user_id', 'user_name', 'user_email', 'user_mobile',
+      'user_avatar', 'preferred_language', 'user_gender_id',
+      'location_id', 'location_name', 'is_participant', 'created_on',
+    ],
+    offset,
+    limit: PAGE_SIZE,
+    order: [['user_id', 'DESC']],
+    raw: true,
+  });
+
+  const totalPages = Math.ceil(count / PAGE_SIZE);
+
+  return {
+    users: rows.map(u => ({
+      userId:        u.user_id,
+      userName:      u.user_name,
+      userEmail:     u.user_email,
+      userMobile:    u.user_mobile,
+      userAvatar:    u.user_avatar,
+      languageEnum:  u.preferred_language,
+      userGenderId:  GenderEnum.indexOf(u.user_gender_id),
+      locationId:    u.location_id,
+      locationName:  u.location_name,
+      isParticipant: !!u.is_participant,
+      createdOn:     u.created_on,
+    })),
+    totalElements:   count,
+    totalPages,
+    currentPage:     pageIndex,
+    pageSize:        PAGE_SIZE,
+    hasNextPage:     pageIndex < totalPages - 1,
+    hasPreviousPage: pageIndex > 0,
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch };

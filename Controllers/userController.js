@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -311,4 +311,38 @@ const deleteSubmission = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1268 — Get User Search Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /users/search?query=&pageIndex=&visitorId=
+ *
+ * Java contract (UserController.getUserSearch):
+ *   - query     : string search term (optional, blank = all users)
+ *   - pageIndex : 0-based integer page number (default 0)
+ *   - visitorId : optional visitor UUID (ignored in DB query, passed for future use)
+ *   - Authorization header is OPTIONAL (public endpoint in Java)
+ *
+ * HTTP 200 on success, 422 on invalid pageIndex, 500 on server error.
+ */
+const getUserSearchHandler = async (req, res) => {
+  try {
+    const query     = req.query.query     || '';
+    // Use nullish coalescing so pageIndex=0 is treated as valid (not converted to default)
+    const pageIndex = parseInt(req.query.pageIndex ?? 0);
+    const visitorId = req.query.visitorId || null;
+
+    if (isNaN(pageIndex) || pageIndex < 0) {
+      return res.status(422).json({ message: 'pageIndex must be a non-negative integer' });
+    }
+
+    const result = await getUserSearch(query, pageIndex, visitorId);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[getUserSearchHandler]', err.message);
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler };

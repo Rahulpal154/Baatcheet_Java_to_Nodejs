@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -231,6 +231,128 @@ router.post('/login', [
  *         description: Invalid pagination parameters
  */
 router.get('/', auth, getUserListHandler);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1268 — Get User Search Route
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/search:
+ *   get:
+ *     summary: Search users by name or email
+ *     description: >
+ *       Full-text search across `user_name` and `user_email` using SQL LIKE.
+ *       Mirrors Java `UserController.getUserSearch()` →
+ *       `UserServiceImpl.getUserSearch()`.
+ *
+ *       Business rules:
+ *       - Uses 0-based `pageIndex` (Spring Page<T> convention).
+ *       - Page size is fixed at 10 (Java `PageRequest.of(pageIndex, 10)`).
+ *       - `query` is optional — omitting it returns all users.
+ *       - `visitorId` is optional and currently not used in the DB query.
+ *       - Authorization is **optional** (public endpoint in Java).
+ *     tags: [Users]
+ *     security:
+ *       - {}
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         schema:
+ *           type: string
+ *         description: Search term matched against userName and userEmail (LIKE %query%)
+ *         example: "priya"
+ *       - in: query
+ *         name: pageIndex
+ *         schema:
+ *           type: integer
+ *           minimum: 0
+ *           default: 0
+ *         description: >
+ *           0-based page index (Java Spring Page convention).
+ *           Page 0 = first page, page 1 = second page, etc.
+ *         example: 0
+ *       - in: query
+ *         name: visitorId
+ *         schema:
+ *           type: string
+ *         description: Optional visitor UUID for anonymous session tracking
+ *         example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+ *     responses:
+ *       200:
+ *         description: Search results returned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 users:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       userId:        { type: integer, example: 42 }
+ *                       userName:      { type: string,  example: "Priya Sharma" }
+ *                       userEmail:     { type: string,  example: "priya@example.com" }
+ *                       userMobile:    { type: integer, example: 9876543210 }
+ *                       userAvatar:    { type: string,  nullable: true, example: "avatar_001.png" }
+ *                       languageEnum:  { type: integer, description: "0=ENGLISH, 1=HINDI", example: 0 }
+ *                       userGenderId:  { type: integer, description: "0=OTHER…5=PREFER_NOT_TO_SAY", example: 2 }
+ *                       locationId:    { type: integer, example: 101 }
+ *                       locationName:  { type: string,  example: "Mumbai" }
+ *                       isParticipant: { type: boolean, example: false }
+ *                       createdOn:     { type: string,  format: date-time }
+ *                 totalElements:   { type: integer, example: 48 }
+ *                 totalPages:      { type: integer, example: 5 }
+ *                 currentPage:     { type: integer, example: 0 }
+ *                 pageSize:        { type: integer, example: 10 }
+ *                 hasNextPage:     { type: boolean, example: true }
+ *                 hasPreviousPage: { type: boolean, example: false }
+ *             examples:
+ *               withResults:
+ *                 summary: Search found 2 users
+ *                 value:
+ *                   users:
+ *                     - userId: 42
+ *                       userName: "Priya Sharma"
+ *                       userEmail: "priya@example.com"
+ *                       userMobile: 9876543210
+ *                       userAvatar: null
+ *                       languageEnum: 0
+ *                       userGenderId: 2
+ *                       locationId: 101
+ *                       locationName: "Mumbai"
+ *                       isParticipant: false
+ *                       createdOn: "2024-01-22T00:00:01.000Z"
+ *                   totalElements: 2
+ *                   totalPages: 1
+ *                   currentPage: 0
+ *                   pageSize: 10
+ *                   hasNextPage: false
+ *                   hasPreviousPage: false
+ *               noResults:
+ *                 summary: No users matched
+ *                 value:
+ *                   users: []
+ *                   totalElements: 0
+ *                   totalPages: 0
+ *                   currentPage: 0
+ *                   pageSize: 10
+ *                   hasNextPage: false
+ *                   hasPreviousPage: false
+ *       422:
+ *         description: Invalid pageIndex (negative or non-numeric)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: "pageIndex must be a non-negative integer" }
+ *       500:
+ *         $ref: '#/components/responses/500'
+ */
+router.get('/search', getUserSearchHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT /users/:userId  (#1259)
