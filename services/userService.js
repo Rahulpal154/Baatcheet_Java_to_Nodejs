@@ -543,15 +543,40 @@ const readStory = async (userId, storyId) => {
     where: { id: storyId },
     raw: true,
   });
-
+  
   if (!story) {
     const err = new Error(`Story not found with id: ${storyId}`);
     err.status = 404;
     throw err;
   }
+  
+  if (userId) {
+    const interaction =
+      await model.user_story_interaction.findOne({
+        where: {
+          user_id: userId,
+          story_id: storyId,
+        },
+      });
+
+    if (interaction) {
+      await interaction.update({
+        mark_as_read: 1,
+        updated_on: new Date(),
+      });
+    } else {
+      await model.user_story_interaction.create({
+        user_id: userId,
+        story_id: storyId,
+        mark_as_read: 1,
+        updated_on: new Date(),
+      });
+    }
+  }
+
 
   const tags = await model.story_tag_map.findAll({
-    where: { id: storyId },
+    where: { story_id: storyId },
     attributes: ['tag_id'],
     raw: true,
   });

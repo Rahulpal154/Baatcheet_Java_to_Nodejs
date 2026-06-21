@@ -21,7 +21,8 @@
     "test:bookmark.add": "cross-env NODE_ENV=local npx jest tests/user.bookmark.add.test.js --forceExit --verbose",
     "test:user.list": "cross-env NODE_ENV=local npx jest tests/user.list.test.js --forceExit --verbose",
     "test:bookmark.delete": "cross-env NODE_ENV=local npx jest tests/user.bookmark.delete.test.js --forceExit --verbose",
-    "test:user.submissions": "cross-env NODE_ENV=local npx jest tests/user.submissions.test.js --forceExit --verbose"
+    "test:user.submissions": "cross-env NODE_ENV=local npx jest tests/user.submissions.test.js --forceExit --verbose",
+    "test:all": "cross-env NODE_ENV=local jest --runInBand --detectOpenHandles"
   },
   "keywords": [],
   "author": "",
