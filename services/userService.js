@@ -999,4 +999,119 @@ const getUserSearch = async (query, pageIndex = 0, visitorId = null) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1269 — User Metrics
+// Mirrors: UserServiceImpl.getUserMetrics() / UserAccountDetailsDTO
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Retrieve account metrics for the authenticated user.
+ *
+ * Java contract (UserController.getUserMetrics → UserServiceImpl.getUserMetrics):
+ *   - User identity derived from JWT token (NOT a path param).
+ *   - Returns UserAccountDetailsDTO — user profile + aggregated activity counts.
+ *   - 404 if userId not found in user_master.
+ *
+ * Database tables used:
+ *   - user_master              (profile)
+ *   - user_tag_map             (tag count)
+ *   - user_trigger_map         (trigger count)
+ *   - user_community_map       (community count)
+ *   - user_story_interaction   (stories read — mark_as_read = 1)
+ *   - user_story_map           (saved/bookmarked stories)
+ *   - user_reaction_map        (story reactions)
+ *   - user_submission          (user submissions)
+ *
+ * @param {number} userId - Derived from req.decodedToken.user_id
+ * @returns {Object} UserAccountDetailsDTO-equivalent object
+ */
+const getUserMetrics = async (userId) => {
+  // ── 1. Verify user exists ──────────────────────────────────────────────────
+  const user = await model.user_master.findByPk(userId, { raw: true });
+  if (!user) {
+    const err = new Error(`User not found with id: ${userId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  // ── 2. Fetch tags, triggers, communities ───────────────────────────────────
+  const [tags, triggers, communities] = await Promise.all([
+    model.user_tag_map.findAll({
+      where: { user_id: userId },
+      attributes: ['tag_id', 'tag_name'],
+      raw: true,
+    }),
+    model.user_trigger_map.findAll({
+      where: { user_id: userId },
+      attributes: ['trigger_id', 'trigger_name'],
+      raw: true,
+    }),
+    model.user_community_map.findAll({
+      where: { user_id: userId },
+      attributes: ['community_id'],
+      raw: true,
+    }),
+  ]);
+
+  // ── 3. Aggregate activity counts ───────────────────────────────────────────
+  const [
+    storiesReadCount,
+    bookmarksCount,
+    reactionsCount,
+    submissionsCount,
+  ] = await Promise.all([
+    // Stories the user has marked as read (user_story_interaction.mark_as_read = 1)
+    model.user_story_interaction.count({
+      where: { user_id: userId, mark_as_read: 1 },
+    }),
+    // Stories the user has saved/bookmarked (user_story_map)
+    model.user_story_map.count({
+      where: { user_id: userId },
+    }),
+    // Reactions the user has given (user_reaction_map)
+    model.user_reaction_map.count({
+      where: { user_id: userId },
+    }),
+    // Submissions by the user (user_submission)
+    model.user_submission.count({
+      where: { user_id: userId },
+    }),
+  ]);
+
+  // ── 4. Build UserAccountDetailsDTO ────────────────────────────────────────
+  return {
+    // User profile
+    userId:       user.user_id,
+    userName:     user.user_name,
+    userEmail:    user.user_email,
+    userMobile:   user.user_mobile,
+    userAge:      user.user_age,
+    userGenderId: GenderEnum.indexOf(user.user_gender_id),
+    languageEnum: user.preferred_language,
+    locationId:   user.location_id,
+    locationName: user.location_name,
+    userAvatar:   user.user_avatar,
+    isEmailLogin: !!user.is_email_login,
+    isParticipant: !!user.is_participant,
+    createdOn:    user.created_on,
+    updatedOn:    user.updated_on,
+
+    // User preferences
+    userTag:       tags.map(t => ({ tagId: t.tag_id, tagName: t.tag_name })),
+    triggers:      triggers.map(t => ({ triggerId: t.trigger_id, triggerName: t.trigger_name })),
+    userCommunity: communities.map(c => ({ communityId: c.community_id })),
+
+    // Activity metrics
+    metrics: {
+      storiesRead:      storiesReadCount,
+      bookmarksCount:   bookmarksCount,
+      reactionsCount:   reactionsCount,
+      submissionsCount: submissionsCount,
+      tagsCount:        tags.length,
+      triggersCount:    triggers.length,
+      communitiesCount: communities.length,
+    },
+  };
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics };

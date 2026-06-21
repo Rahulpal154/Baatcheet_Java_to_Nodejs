@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -353,6 +353,130 @@ router.get('/', auth, getUserListHandler);
  *         $ref: '#/components/responses/500'
  */
 router.get('/search', getUserSearchHandler);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1269 — GET /users/metrics  (primary canonical route)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/metrics:
+ *   get:
+ *     summary: Get authenticated user's account metrics
+ *     description: >
+ *       Returns the full account details for the currently authenticated user.
+ *       Mirrors Java `UserController.getUserMetrics()` →
+ *       `UserServiceImpl.getUserMetrics()`.
+ *
+ *       Business rules:
+ *       - User identity is derived from the Bearer JWT token — no userId path param.
+ *       - Returns user profile + aggregated activity counts.
+ *       - 404 if the user from the token no longer exists.
+ *       - Authorization is **required**.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User account metrics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 userId:        { type: integer,  example: 42 }
+ *                 userName:      { type: string,   example: "Priya Sharma" }
+ *                 userEmail:     { type: string,   example: "priya@example.com" }
+ *                 userMobile:    { type: integer,  example: 9876543210 }
+ *                 userAge:       { type: integer,  example: 25 }
+ *                 userGenderId:  { type: integer,  description: "0=OTHER…5=PREFER_NOT_TO_SAY", example: 2 }
+ *                 languageEnum:  { type: integer,  description: "0=ENGLISH,1=HINDI", example: 0 }
+ *                 locationId:    { type: integer,  example: 101 }
+ *                 locationName:  { type: string,   example: "Mumbai" }
+ *                 userAvatar:    { type: string,   nullable: true, example: "avatar_001.png" }
+ *                 isEmailLogin:  { type: boolean,  example: true }
+ *                 isParticipant: { type: boolean,  example: false }
+ *                 createdOn:     { type: string,   format: date-time }
+ *                 updatedOn:     { type: string,   format: date-time }
+ *                 userTag:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       tagId:   { type: integer, example: 3 }
+ *                       tagName: { type: string,  example: "Mental Health" }
+ *                 triggers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       triggerId:   { type: integer, example: 2 }
+ *                       triggerName: { type: string,  example: "Abuse" }
+ *                 userCommunity:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       communityId: { type: integer, example: 1 }
+ *                 metrics:
+ *                   type: object
+ *                   description: Aggregated activity counts for the user
+ *                   properties:
+ *                     storiesRead:      { type: integer, example: 15 }
+ *                     bookmarksCount:   { type: integer, example: 4 }
+ *                     reactionsCount:   { type: integer, example: 7 }
+ *                     submissionsCount: { type: integer, example: 2 }
+ *                     tagsCount:        { type: integer, example: 3 }
+ *                     triggersCount:    { type: integer, example: 2 }
+ *                     communitiesCount: { type: integer, example: 1 }
+ *             example:
+ *               userId: 42
+ *               userName: "Priya Sharma"
+ *               userEmail: "priya@example.com"
+ *               userMobile: 9876543210
+ *               userAge: 25
+ *               userGenderId: 2
+ *               languageEnum: 0
+ *               locationId: 101
+ *               locationName: "Mumbai"
+ *               userAvatar: null
+ *               isEmailLogin: true
+ *               isParticipant: false
+ *               createdOn: "2024-01-22T00:00:01.000Z"
+ *               updatedOn: "2024-06-01T10:30:00.000Z"
+ *               userTag: [{ tagId: 3, tagName: "Mental Health" }]
+ *               triggers: [{ triggerId: 2, triggerName: "Abuse" }]
+ *               userCommunity: [{ communityId: 1 }]
+ *               metrics:
+ *                 storiesRead: 15
+ *                 bookmarksCount: 4
+ *                 reactionsCount: 7
+ *                 submissionsCount: 2
+ *                 tagsCount: 1
+ *                 triggersCount: 1
+ *                 communitiesCount: 1
+ *       401:
+ *         description: No token or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: "Unable to identify user from token" }
+ *       403:
+ *         $ref: '#/components/responses/403'
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: "User not found with id: 42" }
+ *       500:
+ *         $ref: '#/components/responses/500'
+ */
+router.get('/metrics', auth, getUserMetricsHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT /users/:userId  (#1259)
@@ -997,3 +1121,52 @@ router.delete('/:userId/submissions/:submissionId', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
   param('submissionId').isInt({ min: 1 }).withMessage('submissionId must be a positive integer'),
 ], deleteSubmission);
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1269 — GET /users/:userId/metrics  (compatibility route for old frontend)
+// Per migration plan: "Preserve old frontend routes so existing frontends continue to work."
+// Frontend calls: /users/{id}/metrics
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}/metrics:
+ *   get:
+ *     summary: Get user account metrics by userId (compatibility route)
+ *     description: >
+ *       Compatibility route for older frontend clients that pass userId in the path.
+ *       Per migration plan, old frontend routes are preserved alongside the canonical
+ *       token-based route (`GET /users/metrics`).
+ *       Authorization is required.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID of the user to retrieve metrics for
+ *         example: 42
+ *     responses:
+ *       200:
+ *         description: User account metrics retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserMetrics'
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ *       500:
+ *         $ref: '#/components/responses/500'
+ */
+router.get('/:userId/metrics', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+], getUserMetricsByIdHandler);

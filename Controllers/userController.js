@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -345,4 +345,62 @@ const getUserSearchHandler = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1269 — Get User Metrics Handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /users/metrics
+ *
+ * Java contract (UserController.getUserMetrics):
+ *   - Authorization header is REQUIRED (Bearer JWT).
+ *   - User identity is derived from the decoded JWT token (req.decodedToken.user_id).
+ *   - No path parameters — the authenticated user's own metrics are returned.
+ *   - 404 if the userId from the token is not found in user_master.
+ *   - 500 on unexpected server error.
+ *
+ * Note on compatibility route:
+ *   The user frontend also calls /users/{id}/metrics (legacy path).
+ *   Per the migration plan, we must preserve old frontend routes.
+ *   A compatibility route GET /:userId/metrics is also registered in userRoute.js
+ *   pointing to this same handler, but reading userId from req.params.userId instead.
+ *   Both routes share the same service function.
+ */
+const getUserMetricsHandler = async (req, res) => {
+  try {
+    // Primary: token-derived userId (Java production behaviour)
+    const userId = req.decodedToken?.user_id;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unable to identify user from token' });
+    }
+
+    const result = await getUserMetrics(Number(userId));
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[getUserMetricsHandler]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+/**
+ * Compatibility handler for legacy frontend path: GET /users/:userId/metrics
+ * Per migration plan: "preserve old frontend routes so existing frontends continue to work."
+ * Uses path param userId instead of token-derived userId.
+ */
+const getUserMetricsByIdHandler = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId } = req.params;
+
+    const result = await getUserMetrics(Number(userId));
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[getUserMetricsByIdHandler]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler };
