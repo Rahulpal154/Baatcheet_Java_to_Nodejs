@@ -1114,4 +1114,145 @@ const getUserMetrics = async (userId) => {
   };
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1270 — Delete User Interactions
+// Mirrors: UserServiceImpl.resetInteraction() and clearReflectionAndNotes()
+// ─────────────────────────────────────────────────────────────────────────────
+ 
+/**
+ * Reset all story interactions for a user.
+ *
+ * Java contract (UserController.resetInteraction → UserServiceImpl.resetInteraction):
+ *   DELETE /users/resetInteraction/{userId}
+ *   - Deletes all rows in user_story_interaction where user_id = userId
+ *   - Deletes all rows in user_reaction_map where user_id = userId
+ *   - Returns Map<String,String> { "message": "..." }, HTTP 200
+ *   - 404 if user does not exist
+ *   - Wrapped in @Transactional
+ *
+ * Database tables:
+ *   - user_story_interaction  (story read tracking: mark_as_read, visitor_id)
+ *   - user_reaction_map       (section reactions given by user)
+ *
+ * @param {number} userId - Path param from request
+ * @returns {{ message: string, userId: number, deletedCounts: Object }}
+ */
+const resetUserInteraction = async (userId) => {
+  const t = await sequelize.transaction();
+  try {
+    // ── 1. Verify user exists ────────────────────────────────────────────────
+    const user = await model.user_master.findByPk(userId, { transaction: t });
+    if (!user) {
+      const err = new Error(`User not found with id: ${userId}`);
+      err.status = 404;
+      throw err;
+    }
+ 
+    // ── 2. Delete story interactions (read tracking) ─────────────────────────
+    const interactionCount = await model.user_story_interaction.destroy({
+      where: { user_id: userId },
+      transaction: t,
+    });
+ 
+    // ── 3. Delete story reactions ────────────────────────────────────────────
+    const reactionCount = await model.user_reaction_map.destroy({
+      where: { user_id: userId },
+      transaction: t,
+    });
+ 
+    await t.commit();
+ 
+    return {
+      message: `User interactions reset successfully`,
+      userId,
+      deletedCounts: {
+        storyInteractions: interactionCount,
+        reactions:         reactionCount,
+      },
+    };
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
+};
+ 
+/**
+ * Clear all reflections and notes for a user.
+ *
+ * Java contract (UserController.clearReflectionAndNotes → UserServiceImpl.clearReflectionAndNotes):
+ *   DELETE /users/clearReflectionAndNotes/{userId}
+ *   - Deletes note_prompts first (FK child of user_notes)
+ *   - Deletes user_notes for the user
+ *   - Deletes story_reflections for the user
+ *   - Returns Map<String,String> { "message": "..." }, HTTP 200
+ *   - 404 if user does not exist
+ *   - Wrapped in @Transactional
+ *
+ * Database tables (deletion order matters due to FK constraints):
+ *   1. note_prompts       (FK: note_id → user_notes.note_id — must be deleted FIRST)
+ *   2. user_notes         (FK parent — deleted AFTER note_prompts)
+ *   3. story_reflections  (independent FK: user_id — can be deleted in any order)
+ *
+ * @param {number} userId - Path param from request
+ * @returns {{ message: string, userId: number, deletedCounts: Object }}
+ */
+const clearUserReflectionAndNotes = async (userId) => {
+  const t = await sequelize.transaction();
+  try {
+    // ── 1. Verify user exists ────────────────────────────────────────────────
+    const user = await model.user_master.findByPk(userId, { transaction: t });
+    if (!user) {
+      const err = new Error(`User not found with id: ${userId}`);
+      err.status = 404;
+      throw err;
+    }
+ 
+    // ── 2. Find all note_ids belonging to this user ───────────────────────────
+    // We need these IDs to cascade-delete note_prompts (FK child).
+    const userNotes = await model.user_notes.findAll({
+      where: { user_id: userId },
+      attributes: ['note_id'],
+      transaction: t,
+      raw: true,
+    });
+    const noteIds = userNotes.map(n => n.note_id);
+ 
+    // ── 3. Delete note_prompts (FK child — must go before user_notes) ─────────
+    let promptCount = 0;
+    if (noteIds.length > 0) {
+      promptCount = await model.note_prompts.destroy({
+        where: { note_id: noteIds },
+        transaction: t,
+      });
+    }
+ 
+    // ── 4. Delete user_notes ──────────────────────────────────────────────────
+    const noteCount = await model.user_notes.destroy({
+      where: { user_id: userId },
+      transaction: t,
+    });
+ 
+    // ── 5. Delete story_reflections ────────────────────────────────────────────
+    const reflectionCount = await model.story_reflections.destroy({
+      where: { user_id: userId },
+      transaction: t,
+    });
+ 
+    await t.commit();
+ 
+    return {
+      message: `User reflections and notes cleared successfully`,
+      userId,
+      deletedCounts: {
+        notePrompts:      promptCount,
+        userNotes:        noteCount,
+        storyReflections: reflectionCount,
+      },
+    };
+  } catch (err) {
+    await t.rollback();
+    throw err;
+  }
+};
+
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics, resetUserInteraction, clearUserReflectionAndNotes };

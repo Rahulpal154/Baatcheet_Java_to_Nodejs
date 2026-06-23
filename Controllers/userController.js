@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics, resetUserInteraction, clearUserReflectionAndNotes } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -403,4 +403,63 @@ const getUserMetricsByIdHandler = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler };
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1270 — Reset User Interactions Handler
+// ─────────────────────────────────────────────────────────────────────────────
+ 
+/**
+ * DELETE /users/resetInteraction/:userId
+ *
+ * Java contract (UserController.resetInteraction):
+ *   - Requires Authorization header (Bearer JWT).
+ *   - userId comes from path param.
+ *   - Clears user_story_interaction and user_reaction_map for the user.
+ *   - Returns HTTP 200 with Map<String,String> message body.
+ *   - Returns 404 if user not found.
+ *   - Returns 500 on unexpected error.
+ */
+const resetInteractionHandler = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId } = req.params;
+ 
+    const result = await resetUserInteraction(Number(userId));
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[resetInteractionHandler]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1270 — Clear Reflections and Notes Handler
+// ─────────────────────────────────────────────────────────────────────────────
+ 
+/**
+ * DELETE /users/clearReflectionAndNotes/:userId
+ *
+ * Java contract (UserController.clearReflectionAndNotes):
+ *   - Requires Authorization header (Bearer JWT).
+ *   - userId comes from path param.
+ *   - Clears note_prompts → user_notes → story_reflections for the user
+ *     (in FK-safe transactional order).
+ *   - Returns HTTP 200 with Map<String,String> message body.
+ *   - Returns 404 if user not found.
+ *   - Returns 500 on unexpected error.
+ */
+const clearReflectionAndNotesHandler = async (req, res) => {
+  try {
+    if (handleValidationErrors(req, res)) return;
+    const { userId } = req.params;
+ 
+    const result = await clearUserReflectionAndNotes(Number(userId));
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('[clearReflectionAndNotesHandler]', err.message);
+    if (err.status === 404) return res.status(404).json({ message: err.message });
+    return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
+  }
+};
+
+module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler, resetInteractionHandler, clearReflectionAndNotesHandler };

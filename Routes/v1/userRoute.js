@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler, resetInteractionHandler, clearReflectionAndNotesHandler } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -1170,3 +1170,180 @@ router.delete('/:userId/submissions/:submissionId', auth, [
 router.get('/:userId/metrics', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
 ], getUserMetricsByIdHandler);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1270 — DELETE /users/resetInteraction/:userId
+// ─────────────────────────────────────────────────────────────────────────────
+ 
+/**
+ * @swagger
+ * /users/resetInteraction/{userId}:
+ *   delete:
+ *     summary: Reset all story interactions for a user
+ *     description: >
+ *       Deletes all story interaction records and reaction records for the
+ *       specified user. Mirrors Java `UserController.resetInteraction()` →
+ *       `UserServiceImpl.resetInteraction()`.
+ *
+ *       Business rules:
+ *       - Clears `user_story_interaction` (read history, mark-as-read flags).
+ *       - Clears `user_reaction_map` (all section reactions by the user).
+ *       - Both deletions occur in a single database transaction.
+ *       - Returns `HTTP 200` with a message map on success.
+ *       - Returns `HTTP 404` if userId does not exist.
+ *       - Authorization is **required**.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: ID of the user whose interactions to reset
+ *         example: 42
+ *     responses:
+ *       200:
+ *         description: User interactions reset successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "User interactions reset successfully"
+ *                 userId:
+ *                   type: integer
+ *                   example: 42
+ *                 deletedCounts:
+ *                   type: object
+ *                   properties:
+ *                     storyInteractions: { type: integer, example: 12 }
+ *                     reactions:         { type: integer, example: 5 }
+ *             example:
+ *               message: "User interactions reset successfully"
+ *               userId: 42
+ *               deletedCounts:
+ *                 storyInteractions: 12
+ *                 reactions: 5
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: "User not found with id: 42" }
+ *       401:
+ *         $ref: '#/components/responses/401'
+ *       403:
+ *         $ref: '#/components/responses/403'
+ *       422:
+ *         description: Validation error — invalid userId
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:  { type: integer, example: 0 }
+ *                 message: { type: string,  example: "Validation Error" }
+ *       500:
+ *         $ref: '#/components/responses/500'
+ */
+router.delete('/resetInteraction/:userId', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+], resetInteractionHandler);
+ 
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1270 — DELETE /users/clearReflectionAndNotes/:userId
+// ─────────────────────────────────────────────────────────────────────────────
+ 
+/**
+ * @swagger
+ * /users/clearReflectionAndNotes/{userId}:
+ *   delete:
+ *     summary: Clear all reflections and notes for a user
+ *     description: >
+ *       Deletes all reflection and note records for the specified user in a
+ *       FK-safe transactional order. Mirrors Java
+ *       `UserController.clearReflectionAndNotes()` →
+ *       `UserServiceImpl.clearReflectionAndNotes()`.
+ *
+ *       Business rules and deletion order (FK constraints enforced):
+ *       1. `note_prompts` deleted first — FK child of `user_notes`.
+ *       2. `user_notes` deleted next — FK parent.
+ *       3. `story_reflections` deleted — independent FK on `user_id`.
+ *       - All three deletions occur in a single database transaction.
+ *       - Returns `HTTP 200` with a message map on success.
+ *       - Returns `HTTP 404` if userId does not exist.
+ *       - Authorization is **required**.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: ID of the user whose reflections and notes to clear
+ *         example: 42
+ *     responses:
+ *       200:
+ *         description: Reflections and notes cleared successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "User reflections and notes cleared successfully"
+ *                 userId:
+ *                   type: integer
+ *                   example: 42
+ *                 deletedCounts:
+ *                   type: object
+ *                   properties:
+ *                     notePrompts:      { type: integer, example: 8 }
+ *                     userNotes:        { type: integer, example: 3 }
+ *                     storyReflections: { type: integer, example: 6 }
+ *             example:
+ *               message: "User reflections and notes cleared successfully"
+ *               userId: 42
+ *               deletedCounts:
+ *                 notePrompts: 8
+ *                 userNotes: 3
+ *                 storyReflections: 6
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: "User not found with id: 42" }
+ *       401:
+ *         $ref: '#/components/responses/401'
+ *       403:
+ *         $ref: '#/components/responses/403'
+ *       422:
+ *         description: Validation error — invalid userId
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:  { type: integer, example: 0 }
+ *                 message: { type: string,  example: "Validation Error" }
+ *       500:
+ *         $ref: '#/components/responses/500'
+ */
+router.delete('/clearReflectionAndNotes/:userId', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+], clearReflectionAndNotesHandler);
