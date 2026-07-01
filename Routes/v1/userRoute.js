@@ -1,8 +1,51 @@
 'use strict';
 
+/**
+ * Routes/v1/userRoute.js
+ *
+ * Changes for #1263, #1264, #1266:
+ *
+ * ❌ REMOVED (WRONG routes):
+ *   GET    /users/:userId/stories/:storyId          (#1263 wrong method + URL)
+ *   POST   /users/:userId/stories/:storyId/bookmark (#1264 wrong URL)
+ *   DELETE /users/:userId/stories/:storyId/bookmark (#1266 wrong URL)
+ *
+ * ✅ ADDED (CORRECT routes matching Java Swagger):
+ *   POST   /users/mark-as-read/:storyId             (#1263)
+ *   POST   /users/bookmark/:storyId                 (#1264)
+ *   DELETE /users/bookmark/:userId/:storyId         (#1266)
+ *
+ * ⚠️  ROUTE ORDER NOTE:
+ *   Static paths MUST be registered before parameterised paths to prevent
+ *   Express shadowing.  Correct order:
+ *     /register, /login, /search, /metrics, /mark-as-read/:storyId,
+ *     /bookmark/:storyId, /bookmark/:userId/:storyId
+ *     THEN /:userId and its sub-routes.
+ */
+
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, markStoryAsReadHandler, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler, resetInteractionHandler, clearReflectionAndNotesHandler } = require('../../Controllers/userController');
+const {
+  registerUser,
+  loginUser,
+  updateUserById,
+  getUserById,
+  deleteUserById,
+  updateLanguageById,
+  markStoryAsReadHandler,        // #1263
+  addBookmark,                   // #1264
+  getUserListHandler,
+  deleteBookmark,                // #1266
+  addSubmission,
+  getSubmission,
+  getSubmissions,
+  deleteSubmission,
+  getUserSearchHandler,
+  getUserMetricsHandler,
+  getUserMetricsByIdHandler,
+  resetInteractionHandler,
+  clearReflectionAndNotesHandler,
+} = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -22,11 +65,7 @@ const router = express.Router();
  * /users/register:
  *   post:
  *     summary: Register a new user
- *     description: >
- *       Creates a new user. Mirrors Java UserServiceImpl.saveUser().
- *       isEmailLogin=true → validates email uniqueness.
- *       isEmailLogin=false → validates mobile uniqueness.
- *       Returns UserResponseDto + JWT on success (201).
+ *     description: Creates a new user. Mirrors Java UserServiceImpl.saveUser().
  *     tags: [Users]
  *     requestBody:
  *       required: true
@@ -36,55 +75,21 @@ const router = express.Router();
  *             type: object
  *             required: [userName, userAge, userGenderId, languageEnum, locationId, locationName, userEmail]
  *             properties:
- *               userName:      { type: string, example: "Priya Sharma" }
+ *               userName:      { type: string,  example: "Priya Sharma" }
  *               userAge:       { type: integer, example: 25 }
  *               userMobile:    { type: integer, example: 9876543210 }
- *               userGenderId:  { type: integer, description: "0=OTHER,1=MALE,2=FEMALE,3=TRANSGENDER,4=NON_BINARY,5=PREFER_NOT_TO_SAY", example: 2 }
- *               languageEnum:  { type: integer, description: "0=ENGLISH,1=HINDI", example: 0 }
+ *               userGenderId:  { type: integer, example: 2 }
+ *               languageEnum:  { type: integer, example: 0 }
  *               locationId:    { type: integer, example: 101 }
- *               locationName:  { type: string, example: "Mumbai" }
- *               userEmail:     { type: string, format: email, example: "priya@example.com" }
- *               userAvatar:    { type: string, example: "avatar_001.png" }
+ *               locationName:  { type: string,  example: "Mumbai" }
+ *               userEmail:     { type: string,  format: email, example: "priya@example.com" }
+ *               userAvatar:    { type: string,  example: "avatar_001.png" }
  *               isEmailLogin:  { type: boolean, default: true }
- *               userTag:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     tagId: { type: integer, example: 3 }
- *               triggers:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     triggerId: { type: integer, example: 2 }
- *               userCommunity:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     communityId: { type: integer, description: "0=OTHER,1=LGBTQIA,2=PERSON_WITH_DISABILITY,3=DALIT_BAHUJAN_OR_ADIVASI,4=RELIGIOUS_MINORITIES,5=NOT_APPLICABLE", example: 0 }
  *     responses:
  *       201:
- *         description: User registered successfully with JWT token
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 userId:       { type: integer, example: 42 }
- *                 userName:     { type: string, example: "Priya Sharma" }
- *                 userEmail:    { type: string, example: "priya@example.com" }
- *                 jwtToken:     { type: string, example: "eyJhbGciOiJIUzI1NiJ9..." }
- *                 isEmailLogin: { type: boolean, example: true }
+ *         description: User registered successfully
  *       409:
  *         description: Duplicate email or mobile
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string, example: "User already exists with email Id: priya@example.com" }
  *       422:
  *         $ref: '#/components/responses/422'
  *       500:
@@ -117,11 +122,6 @@ router.post('/register', [
  * /users/login:
  *   post:
  *     summary: User login
- *     description: >
- *       Checks if user exists by email OR mobile. Mirrors Java
- *       UserServiceImpl.checkExistingUser().
- *       Returns userExists=TRUE/FALSE (always HTTP 200).
- *       On success sets cookies: user_type=USER, jwt_token, login_timestamp.
  *     tags: [Users]
  *     requestBody:
  *       required: true
@@ -130,23 +130,11 @@ router.post('/register', [
  *           schema:
  *             type: object
  *             properties:
- *               userEmail:  { type: string, format: email, example: "priya@example.com" }
- *               userMobile: { type: integer, example: 9876543210 }
- *           examples:
- *             email:  { summary: "Email login",  value: { userEmail: "priya@example.com" } }
- *             mobile: { summary: "Mobile login", value: { userMobile: 9876543210 } }
+ *               userEmail:  { type: string, format: email }
+ *               userMobile: { type: integer }
  *     responses:
  *       200:
- *         description: Login result (TRUE=found, FALSE=not found)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 userExists:   { type: string, enum: [TRUE, FALSE], example: "TRUE" }
- *                 userId:       { type: integer, nullable: true, example: 42 }
- *                 jwtToken:     { type: string, nullable: true, example: "eyJhbGciOiJIUzI1NiJ9..." }
- *                 isEmailLogin: { type: boolean, nullable: true, example: true }
+ *         description: Login result (userExists TRUE/FALSE)
  *       422:
  *         $ref: '#/components/responses/422'
  *       500:
@@ -162,69 +150,29 @@ router.post('/login', [
 ], loginUser);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1265 — Get User List
-// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// GET /users  (#1265)
 // ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * @swagger
  * /users:
  *   get:
  *     summary: Get paginated list of all users
- *     description: Retrieve users with pagination and optional search
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
- *         schema:
- *           type: integer
- *           minimum: 1
- *           default: 1
- *         description: Page number for pagination
+ *         schema: { type: integer, minimum: 1, default: 1 }
  *       - in: query
  *         name: limit
- *         schema:
- *           type: integer
- *           minimum: 1
- *           maximum: 100
- *           default: 10
- *         description: Number of users per page
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
  *       - in: query
  *         name: search
- *         schema:
- *           type: string
- *         description: Search by userName or userEmail
+ *         schema: { type: string }
  *     responses:
  *       200:
- *         description: User list retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 users:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       userId:       { type: integer, example: 42 }
- *                       userName:     { type: string, example: "John Doe" }
- *                       userEmail:    { type: string }
- *                       userMobile:   { type: integer }
- *                       userAvatar:   { type: string }
- *                       languageEnum: { type: integer }
- *                       createdOn:    { type: string, format: date-time }
- *                 pagination:
- *                   type: object
- *                   properties:
- *                     currentPage:    { type: integer, example: 1 }
- *                     pageSize:       { type: integer, example: 10 }
- *                     totalUsers:     { type: integer, example: 150 }
- *                     totalPages:     { type: integer, example: 15 }
- *                     hasNextPage:    { type: boolean, example: true }
- *                     hasPreviousPage: { type: boolean, example: false }
+ *         description: User list retrieved
  *       401:
  *         description: Unauthorized
  *       422:
@@ -233,248 +181,51 @@ router.post('/login', [
 router.get('/', auth, getUserListHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1268 — Get User Search Route
+// GET /users/search  (#1268)
 // ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * @swagger
  * /users/search:
  *   get:
  *     summary: Search users by name or email
- *     description: >
- *       Full-text search across `user_name` and `user_email` using SQL LIKE.
- *       Mirrors Java `UserController.getUserSearch()` →
- *       `UserServiceImpl.getUserSearch()`.
- *
- *       Business rules:
- *       - Uses 0-based `pageIndex` (Spring Page<T> convention).
- *       - Page size is fixed at 10 (Java `PageRequest.of(pageIndex, 10)`).
- *       - `query` is optional — omitting it returns all users.
- *       - `visitorId` is optional and currently not used in the DB query.
- *       - Authorization is **optional** (public endpoint in Java).
  *     tags: [Users]
- *     security:
- *       - {}
- *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: query
- *         schema:
- *           type: string
- *         description: Search term matched against userName and userEmail (LIKE %query%)
+ *         schema: { type: string }
  *         example: "priya"
  *       - in: query
  *         name: pageIndex
- *         schema:
- *           type: integer
- *           minimum: 0
- *           default: 0
- *         description: >
- *           0-based page index (Java Spring Page convention).
- *           Page 0 = first page, page 1 = second page, etc.
- *         example: 0
+ *         schema: { type: integer, minimum: 0, default: 0 }
  *       - in: query
  *         name: visitorId
- *         schema:
- *           type: string
- *         description: Optional visitor UUID for anonymous session tracking
- *         example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+ *         schema: { type: string }
  *     responses:
  *       200:
- *         description: Search results returned successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 users:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       userId:        { type: integer, example: 42 }
- *                       userName:      { type: string,  example: "Priya Sharma" }
- *                       userEmail:     { type: string,  example: "priya@example.com" }
- *                       userMobile:    { type: integer, example: 9876543210 }
- *                       userAvatar:    { type: string,  nullable: true, example: "avatar_001.png" }
- *                       languageEnum:  { type: integer, description: "0=ENGLISH, 1=HINDI", example: 0 }
- *                       userGenderId:  { type: integer, description: "0=OTHER…5=PREFER_NOT_TO_SAY", example: 2 }
- *                       locationId:    { type: integer, example: 101 }
- *                       locationName:  { type: string,  example: "Mumbai" }
- *                       isParticipant: { type: boolean, example: false }
- *                       createdOn:     { type: string,  format: date-time }
- *                 totalElements:   { type: integer, example: 48 }
- *                 totalPages:      { type: integer, example: 5 }
- *                 currentPage:     { type: integer, example: 0 }
- *                 pageSize:        { type: integer, example: 10 }
- *                 hasNextPage:     { type: boolean, example: true }
- *                 hasPreviousPage: { type: boolean, example: false }
- *             examples:
- *               withResults:
- *                 summary: Search found 2 users
- *                 value:
- *                   users:
- *                     - userId: 42
- *                       userName: "Priya Sharma"
- *                       userEmail: "priya@example.com"
- *                       userMobile: 9876543210
- *                       userAvatar: null
- *                       languageEnum: 0
- *                       userGenderId: 2
- *                       locationId: 101
- *                       locationName: "Mumbai"
- *                       isParticipant: false
- *                       createdOn: "2024-01-22T00:00:01.000Z"
- *                   totalElements: 2
- *                   totalPages: 1
- *                   currentPage: 0
- *                   pageSize: 10
- *                   hasNextPage: false
- *                   hasPreviousPage: false
- *               noResults:
- *                 summary: No users matched
- *                 value:
- *                   users: []
- *                   totalElements: 0
- *                   totalPages: 0
- *                   currentPage: 0
- *                   pageSize: 10
- *                   hasNextPage: false
- *                   hasPreviousPage: false
+ *         description: Search results
  *       422:
- *         description: Invalid pageIndex (negative or non-numeric)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string, example: "pageIndex must be a non-negative integer" }
- *       500:
- *         $ref: '#/components/responses/500'
+ *         description: Invalid pageIndex
  */
 router.get('/search', getUserSearchHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1269 — GET /users/metrics  (primary canonical route)
+// GET /users/metrics  (#1269)
 // ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * @swagger
  * /users/metrics:
  *   get:
  *     summary: Get authenticated user's account metrics
- *     description: >
- *       Returns the full account details for the currently authenticated user.
- *       Mirrors Java `UserController.getUserMetrics()` →
- *       `UserServiceImpl.getUserMetrics()`.
- *
- *       Business rules:
- *       - User identity is derived from the Bearer JWT token — no userId path param.
- *       - Returns user profile + aggregated activity counts.
- *       - 404 if the user from the token no longer exists.
- *       - Authorization is **required**.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: User account metrics retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 userId:        { type: integer,  example: 42 }
- *                 userName:      { type: string,   example: "Priya Sharma" }
- *                 userEmail:     { type: string,   example: "priya@example.com" }
- *                 userMobile:    { type: integer,  example: 9876543210 }
- *                 userAge:       { type: integer,  example: 25 }
- *                 userGenderId:  { type: integer,  description: "0=OTHER…5=PREFER_NOT_TO_SAY", example: 2 }
- *                 languageEnum:  { type: integer,  description: "0=ENGLISH,1=HINDI", example: 0 }
- *                 locationId:    { type: integer,  example: 101 }
- *                 locationName:  { type: string,   example: "Mumbai" }
- *                 userAvatar:    { type: string,   nullable: true, example: "avatar_001.png" }
- *                 isEmailLogin:  { type: boolean,  example: true }
- *                 isParticipant: { type: boolean,  example: false }
- *                 createdOn:     { type: string,   format: date-time }
- *                 updatedOn:     { type: string,   format: date-time }
- *                 userTag:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       tagId:   { type: integer, example: 3 }
- *                       tagName: { type: string,  example: "Mental Health" }
- *                 triggers:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       triggerId:   { type: integer, example: 2 }
- *                       triggerName: { type: string,  example: "Abuse" }
- *                 userCommunity:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       communityId: { type: integer, example: 1 }
- *                 metrics:
- *                   type: object
- *                   description: Aggregated activity counts for the user
- *                   properties:
- *                     storiesRead:      { type: integer, example: 15 }
- *                     bookmarksCount:   { type: integer, example: 4 }
- *                     reactionsCount:   { type: integer, example: 7 }
- *                     submissionsCount: { type: integer, example: 2 }
- *                     tagsCount:        { type: integer, example: 3 }
- *                     triggersCount:    { type: integer, example: 2 }
- *                     communitiesCount: { type: integer, example: 1 }
- *             example:
- *               userId: 42
- *               userName: "Priya Sharma"
- *               userEmail: "priya@example.com"
- *               userMobile: 9876543210
- *               userAge: 25
- *               userGenderId: 2
- *               languageEnum: 0
- *               locationId: 101
- *               locationName: "Mumbai"
- *               userAvatar: null
- *               isEmailLogin: true
- *               isParticipant: false
- *               createdOn: "2024-01-22T00:00:01.000Z"
- *               updatedOn: "2024-06-01T10:30:00.000Z"
- *               userTag: [{ tagId: 3, tagName: "Mental Health" }]
- *               triggers: [{ triggerId: 2, triggerName: "Abuse" }]
- *               userCommunity: [{ communityId: 1 }]
- *               metrics:
- *                 storiesRead: 15
- *                 bookmarksCount: 4
- *                 reactionsCount: 7
- *                 submissionsCount: 2
- *                 tagsCount: 1
- *                 triggersCount: 1
- *                 communitiesCount: 1
+ *         description: User account metrics
  *       401:
- *         description: No token or invalid token
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string, example: "Unable to identify user from token" }
- *       403:
- *         $ref: '#/components/responses/403'
+ *         description: Unauthorized
  *       404:
  *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string, example: "User not found with id: 42" }
- *       500:
- *         $ref: '#/components/responses/500'
  */
 router.get('/metrics', auth, getUserMetricsHandler);
 
@@ -558,7 +309,6 @@ router.post('/mark-as-read/:storyId', [
   param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
 ], markStoryAsReadHandler);
 
- 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /users/bookmark/:storyId  (#1264)
 //
@@ -630,7 +380,7 @@ router.post('/bookmark/:storyId', auth, [
   // ✅ Only storyId validated — userId removed from path
   param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
 ], addBookmark);
- 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /users/bookmark/:userId/:storyId  (#1266)
 //
@@ -707,17 +457,6 @@ router.delete('/bookmark/:userId/:storyId', auth, [
  * /users/{userId}:
  *   put:
  *     summary: Update user profile
- *     description: >
- *       Updates an existing user's profile. Mirrors Java
- *       UserController.updateUser() → UserServiceImpl.updateUser().
- *
- *       Business rules (exact Java parity):
- *       - For email-login users (isEmailLogin=true): mobile can be updated; email stays fixed.
- *       - For mobile-login users (isEmailLogin=false): email can be updated; mobile stays fixed.
- *       - Communities, tags and triggers are REPLACED (delete-all + re-insert).
- *       - 409 returned if updated mobile/email already exists for another user.
- *       - 404 if userId not found.
- *       - Requires Authorization header (Bearer JWT).
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -725,9 +464,7 @@ router.delete('/bookmark/:userId/:storyId', auth, [
  *       - in: path
  *         name: userId
  *         required: true
- *         schema:
- *           type: integer
- *         description: ID of the user to update
+ *         schema: { type: integer }
  *         example: 42
  *     requestBody:
  *       required: true
@@ -736,94 +473,22 @@ router.delete('/bookmark/:userId/:storyId', auth, [
  *           schema:
  *             type: object
  *             properties:
- *               userName:      { type: string, example: "Priya Sharma Updated" }
- *               userAge:       { type: integer, example: 26 }
- *               userMobile:    { type: integer, example: 9876543210 }
- *               userGenderId:  { type: integer, description: "0=OTHER,1=MALE,2=FEMALE,3=TRANSGENDER,4=NON_BINARY,5=PREFER_NOT_TO_SAY", example: 2 }
- *               languageEnum:  { type: integer, description: "0=ENGLISH,1=HINDI", example: 1 }
- *               locationId:    { type: integer, example: 55 }
- *               locationName:  { type: string, example: "Delhi" }
- *               userEmail:     { type: string, format: email, example: "priya.new@example.com" }
- *               userAvatar:    { type: string, example: "avatar_002.png" }
- *               userTag:
- *                 type: array
- *                 description: Replaces all existing tags
- *                 items:
- *                   type: object
- *                   properties:
- *                     tagId: { type: integer, example: 5 }
- *               triggers:
- *                 type: array
- *                 description: Replaces all existing triggers
- *                 items:
- *                   type: object
- *                   properties:
- *                     triggerId: { type: integer, example: 3 }
- *               userCommunity:
- *                 type: array
- *                 description: Replaces all existing communities
- *                 items:
- *                   type: object
- *                   properties:
- *                     communityId: { type: integer, description: "0=OTHER,1=LGBTQIA,2=PERSON_WITH_DISABILITY,3=DALIT_BAHUJAN_OR_ADIVASI,4=RELIGIOUS_MINORITIES,5=NOT_APPLICABLE", example: 1 }
- *           examples:
- *             basic_update:
- *               summary: Update name and age
- *               value:
- *                 userName: "Priya Sharma Updated"
- *                 userAge: 26
- *                 userGenderId: 2
- *                 languageEnum: 1
- *                 locationId: 55
- *                 locationName: "Delhi"
- *             with_tags_and_triggers:
- *               summary: Update with tags and triggers replacement
- *               value:
- *                 userName: "Rahul Kumar"
- *                 userAge: 31
- *                 userGenderId: 1
- *                 languageEnum: 0
- *                 locationId: 101
- *                 locationName: "Mumbai"
- *                 userTag: [{ "tagId": 5 }]
- *                 triggers: [{ "triggerId": 3 }]
- *                 userCommunity: [{ "communityId": 1 }]
+ *               userName:      { type: string }
+ *               userAge:       { type: integer }
+ *               userMobile:    { type: integer }
+ *               userGenderId:  { type: integer }
+ *               languageEnum:  { type: integer }
+ *               locationId:    { type: integer }
+ *               locationName:  { type: string }
+ *               userEmail:     { type: string, format: email }
+ *               userAvatar:    { type: string }
  *     responses:
  *       200:
- *         description: User updated successfully — returns updated UserEntity row
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 user_id:           { type: integer, example: 42 }
- *                 user_name:         { type: string, example: "Priya Sharma Updated" }
- *                 user_age:          { type: integer, example: 26 }
- *                 user_mobile:       { type: integer, example: 9876543210 }
- *                 user_gender_id:    { type: string, example: "FEMALE" }
- *                 preferred_language: { type: integer, example: 1 }
- *                 location_id:       { type: integer, example: 55 }
- *                 location_name:     { type: string, example: "Delhi" }
- *                 user_email:        { type: string, example: "priya@example.com" }
- *                 user_avatar:       { type: string, example: "avatar_002.png" }
- *                 is_email_login:    { type: boolean, example: true }
- *                 is_participant:    { type: boolean, example: false }
+ *         description: User updated
  *       404:
  *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string, example: "User not found with id: 42" }
  *       409:
- *         description: Duplicate email or mobile conflict
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string, example: "User already exists with mobile: 9876543210" }
+ *         description: Conflict
  *       401:
  *         $ref: '#/components/responses/401'
  *       422:
@@ -850,19 +515,14 @@ router.put('/:userId', auth, [
   body('userCommunity.*.communityId').optional().isInt({ min: 0, max: 5 }),
 ], updateUserById);
 
-module.exports = router;
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1260 — Get User Route
-// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// GET /users/:userId  (#1260)
 // ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * @swagger
  * /users/{userId}:
  *   get:
  *     summary: Get user profile by ID
- *     description: Retrieve complete user profile with tags, triggers, and communities
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -870,32 +530,11 @@ module.exports = router;
  *       - in: path
  *         name: userId
  *         required: true
- *         schema:
- *           type: integer
+ *         schema: { type: integer }
  *         example: 42
  *     responses:
  *       200:
  *         description: User profile retrieved
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 userId:        { type: integer }
- *                 userName:      { type: string }
- *                 userAge:       { type: integer }
- *                 userMobile:    { type: integer }
- *                 userEmail:     { type: string }
- *                 userGenderId:  { type: integer }
- *                 languageEnum:  { type: integer }
- *                 locationId:    { type: integer }
- *                 locationName:  { type: string }
- *                 userAvatar:    { type: string }
- *                 isEmailLogin:  { type: boolean }
- *                 isParticipant: { type: boolean }
- *                 userTag:       { type: array }
- *                 triggers:      { type: array }
- *                 userCommunity: { type: array }
  *       404:
  *         description: User not found
  *       401:
@@ -908,16 +547,13 @@ router.get('/:userId', auth, [
 ], getUserById);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1261 — Delete User
-// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
+// DELETE /users/:userId  (#1261)
 // ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * @swagger
  * /users/{userId}:
  *   delete:
  *     summary: Delete user account
- *     description: Delete user and all associated data (tags, triggers, communities)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -925,20 +561,11 @@ router.get('/:userId', auth, [
  *       - in: path
  *         name: userId
  *         required: true
- *         schema:
- *           type: integer
+ *         schema: { type: integer }
  *         example: 42
  *     responses:
  *       200:
- *         description: User deleted successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:  { type: boolean, example: true }
- *                 message:  { type: string, example: "User deleted successfully" }
- *                 userId:   { type: integer, example: 42 }
+ *         description: User deleted
  *       404:
  *         description: User not found
  *       401:
@@ -951,11 +578,6 @@ router.get('/:userId', auth, [
 router.delete('/:userId', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
 ], deleteUserById);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1262 — Update Language for User
-// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PATCH /users/language  (Swagger corrected)
@@ -1026,56 +648,7 @@ router.patch('/language', auth, [
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue #1267 — User Submissions (Add, Get, Delete)
-// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /users/{userId}/submissions:
- *   post:
- *     summary: Create a new user submission
- *     description: Add a new submission for a user
- *     tags: [Submissions]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 42
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - submissionTitle
- *               - submissionContent
- *             properties:
- *               submissionTitle: { type: string, example: "My Submission" }
- *               submissionContent: { type: string, example: "Submission content here" }
- *               submissionStatus: { type: string, enum: ["pending", "approved", "rejected"], default: "pending" }
- *     responses:
- *       201:
- *         description: Submission created successfully
- *       400:
- *         description: Missing required fields
- *       404:
- *         description: User not found
- *       401:
- *         description: Unauthorized
- *       422:
- *         description: Validation error
- */
-router.post('/:userId/submissions', auth, [
-  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
-  body('submissionTitle').trim().notEmpty().withMessage('submissionTitle is required'),
-  body('submissionContent').trim().notEmpty().withMessage('submissionContent is required'),
-  body('submissionStatus').optional().isIn(['pending', 'approved', 'rejected']).withMessage('submissionStatus must be pending, approved, or rejected'),
-], addSubmission);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /users/submission/:submissionId  (Swagger corrected)
@@ -1144,6 +717,58 @@ router.get('/submission/:submissionId', [
   // ✅ Only submissionId validated — no param('userId')
   param('submissionId').isInt({ min: 1 }).withMessage('submissionId must be a positive integer'),
 ], getSubmission);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User Submissions (#1267) — these remain on /:userId paths as implemented
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /users/{userId}/submissions:
+ *   post:
+ *     summary: Create a new user submission
+ *     description: Add a new submission for a user
+ *     tags: [Submissions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 42
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - submissionTitle
+ *               - submissionContent
+ *             properties:
+ *               submissionTitle: { type: string, example: "My Submission" }
+ *               submissionContent: { type: string, example: "Submission content here" }
+ *               submissionStatus: { type: string, enum: ["pending", "approved", "rejected"], default: "pending" }
+ *     responses:
+ *       201:
+ *         description: Submission created successfully
+ *       400:
+ *         description: Missing required fields
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Validation error
+ */
+router.post('/:userId/submissions', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  body('submissionTitle').trim().notEmpty().withMessage('submissionTitle is required'),
+  body('submissionContent').trim().notEmpty().withMessage('submissionContent is required'),
+  body('submissionStatus').optional().isIn(['pending', 'approved', 'rejected']),
+], addSubmission);
 
 /**
  * @swagger
@@ -1223,12 +848,8 @@ router.delete('/:userId/submissions/:submissionId', auth, [
   param('submissionId').isInt({ min: 1 }).withMessage('submissionId must be a positive integer'),
 ], deleteSubmission);
 
-
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1269 — GET /users/:userId/metrics  (compatibility route for old frontend)
-// Per migration plan: "Preserve old frontend routes so existing frontends continue to work."
-// Frontend calls: /users/{id}/metrics
+// GET /users/:userId/metrics  (#1269 compatibility)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1268,12 +889,13 @@ router.delete('/:userId/submissions/:submissionId', auth, [
  *       500:
  *         $ref: '#/components/responses/500'
  */
+
 router.get('/:userId/metrics', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
 ], getUserMetricsByIdHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1270 — DELETE /users/resetInteraction/:userId
+// DELETE /users/resetInteraction/:userId  (#1270)
 // ─────────────────────────────────────────────────────────────────────────────
  
 /**
@@ -1357,12 +979,10 @@ router.get('/:userId/metrics', auth, [
 router.delete('/resetInteraction/:userId', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
 ], resetInteractionHandler);
- 
- 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1270 — DELETE /users/clearReflectionAndNotes/:userId
+// DELETE /users/clearReflectionAndNotes/:userId  (#1270)
 // ─────────────────────────────────────────────────────────────────────────────
- 
 /**
  * @swagger
  * /users/clearReflectionAndNotes/{userId}:
@@ -1448,3 +1068,5 @@ router.delete('/resetInteraction/:userId', auth, [
 router.delete('/clearReflectionAndNotes/:userId', auth, [
   param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
 ], clearReflectionAndNotesHandler);
+
+module.exports = router;

@@ -1,7 +1,9 @@
 const model = require('../models/index');
-const { validationResult} = require("express-validator");
+const { validationResult } = require("express-validator");
 const { generateToken } = require("../services/token");
-const crypto = require("crypto")
+const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
+const { config } = require("../config/nodeConfig");
 
 const handleValidationErrors = (req, res) => {
     const errors = validationResult(req);
@@ -53,6 +55,32 @@ const normalizeNullFields = (data) => {
 
 const generateUUID = () => crypto.randomUUID();
 
+/**
+ * Generate JWT token for an app user, matching Java JwtUtil.generateToken() claims exactly.
+ * Claims: user_id, email_id, user_name, mobile_number, preferred_language, user_avatar
+ *
+ * Moved here from services/userService.js per review comment:
+ * "This shouldn't be in userService file.. Add the token logic in utils/helper.js
+ *  file or somewhere else.. and import it" — Gajendra-Rathore
+ *
+ * @param {Object} user - Sequelize user_master row (raw or model instance)
+ * @returns {string} signed JWT
+ */
+const generateUserToken = (user) => {
+  return jwt.sign(
+    {
+      user_id: user.user_id,
+      email_id: user.user_email,
+      user_name: user.user_name,
+      mobile_number: user.user_mobile,
+      preferred_language: user.preferred_language,
+      user_avatar: user.user_avatar,
+    },
+    config().JWT_KEY,
+    { expiresIn: '7d' }
+  );
+};
+
 module.exports = {
-    handleValidationErrors,getToken,normalizeNullFields, generateUUID
+    handleValidationErrors, getToken, normalizeNullFields, generateUUID, generateUserToken
 };
