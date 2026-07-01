@@ -534,68 +534,71 @@ const updateLanguage = async (userId, languageEnum) => {
   };
 };
 
-/**
- * Retrieve story by ID.
- * Mirrors: StoryServiceImpl.getStory()
- */
-const readStory = async (userId, storyId) => {
-  const story = await model.story_master.findOne({
-    where: { id: storyId },
-    raw: true,
-  });
-  
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1263 — Mark Story As Read
+//
+// ❌ OLD (WRONG): readStory(userId, storyId)
+//   - Returned full story details + tags (Java returns VOID)
+//   - Queried story_tag_map, story_bookmark_map (not in scope of mark-as-read)
+//   - userId was first arg (path param), but Java gets userId from token (optional)
+//
+// ✅ NEW (CORRECT): markStoryAsRead(storyId, userId, visitorId)
+//   Java endpoint: POST /users/mark-as-read/{storyId}?visitorId=
+//   - storyId: path param (required)
+//   - userId: from JWT token (optional — auth is optional)
+//   - visitorId: from query param (optional — for anonymous users)
+//   - Response: void (no body returned)
+//   - DB table: user_story_interaction
+//     └ If interaction exists → update mark_as_read = 1
+//     └ If not → create new record
+// ─────────────────────────────────────────────────────────────────────────────
+const markStoryAsRead = async (storyId, userId, visitorId) => {
+  // 1. Verify story exists
+  const story = await model.story_master.findOne({ where: { id: storyId }, raw: true });
   if (!story) {
     const err = new Error(`Story not found with id: ${storyId}`);
     err.status = 404;
     throw err;
   }
-  
-  if (userId) {
-    const interaction =
-      await model.user_story_interaction.findOne({
-        where: {
-          user_id: userId,
-          story_id: storyId,
-        },
-      });
-
-    if (interaction) {
-      await interaction.update({
-        mark_as_read: 1,
-        updated_on: new Date(),
-      });
-    } else {
-      await model.user_story_interaction.create({
-        user_id: userId,
-        story_id: storyId,
-        mark_as_read: 1,
-        updated_on: new Date(),
-      });
-    }
-  }
-
-
-  const tags = await model.story_tag_map.findAll({
-    where: { story_id: storyId },
-    attributes: ['tag_id'],
-    raw: true,
-  });
-
-  return {
-    storyId: story.id,
-    userId: story.user_id,
-    storyTitle: story.title,
-    storyDescription: story.story_desc,
-    storyContent: story.story_background_card_uri,
-    storyStatus: story.story_status,
-    storyViews: 0,
-    storyLikes: 0,
-    storyBookmarks: 0,
-    isOwnStory: story.user_id === userId,
-    createdOn: story.created_on,
-    updatedOn: story.updated_on,
-    tags: tags.map(t => ({ tagId: t.tag_id })),
+ 
+  // 2. Create or update user_story_interaction
+  //    Priority: userId (logged-in) > visitorId (anonymous)
+  const whereClause = {};
+  const interactionData = {
+    story_id: storyId,
+    mark_as_read: 1,
+    updated_on: new Date(),
   };
+ 
+  if (userId) {
+    // Logged-in user: track by user_id
+    whereClause.user_id = userId;
+    whereClause.story_id = storyId;
+    interactionData.user_id = userId;
+    interactionData.visitor_id = null;
+  } else if (visitorId) {
+    // Anonymous user: track by visitor_id
+    whereClause.visitor_id = visitorId;
+    whereClause.story_id = storyId;
+    interactionData.visitor_id = visitorId;
+    interactionData.user_id = null;
+  } else {
+    // No identifier — still record the interaction (story_id only)
+    whereClause.story_id = storyId;
+    interactionData.user_id = null;
+    interactionData.visitor_id = null;
+  }
+ 
+  const existing = await model.user_story_interaction.findOne({ where: whereClause });
+ 
+  if (existing) {
+    await existing.update({ mark_as_read: 1, updated_on: new Date() });
+  } else {
+    await model.user_story_interaction.create(interactionData);
+  }
+ 
+  // Java returns void — no return value
+  return;
 };
 
 /**
@@ -798,19 +801,33 @@ const addUserSubmission = async (userId, submissionData) => {
 /**
  * Retrieve a single submission by ID.
  */
-const getUserSubmission = async (userId, submissionId) => {
-  const user = await model.user_master.findByPk(userId, { raw: true });
-  if (!user) {
-    const err = new Error(`User not found with id: ${userId}`);
-    err.status = 404;
-    throw err;
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /users/submission/{submissionId} — Swagger corrected
+//
+// ❌ OLD: getUserSubmission(userId, submissionId)
+//   - userId was mandatory (from URL path param)
+//   - Queried: WHERE submission_id = ? AND user_id = ?
+//   - Threw "User not found" if userId invalid (wrong — endpoint is by submissionId)
+//
+// ✅ NEW: getUserSubmission(submissionId, userId)
+//   - submissionId is the primary lookup key (path param — required)
+//   - userId is OPTIONAL (from JWT token — auth is optional per Java Swagger)
+//   - If userId present: query WHERE submission_id = ? AND user_id = ? (ownership check)
+//   - If userId absent:  query WHERE submission_id = ? only (anonymous access)
+//   - Returns 404 if submission not found
+// ─────────────────────────────────────────────────────────────────────────────
+const getUserSubmission = async (submissionId, userId = null) => {
+  let whereClause;
+
+  if (userId) {
+    // Authenticated: verify the submission belongs to this user
+    whereClause = { submission_id: submissionId, user_id: userId };
+  } else {
+    // Anonymous / no token: look up by submissionId only
+    whereClause = { submission_id: submissionId };
   }
 
-  const submission = await model.user_submission.findOne({
-    where: { submission_id: submissionId, user_id: userId },
-    raw: true,
-  });
-
+  const submission = await model.user_submission.findOne({ where: whereClause, raw: true });
   if (!submission) {
     const err = new Error(`Submission not found with id: ${submissionId}`);
     err.status = 404;
@@ -818,13 +835,13 @@ const getUserSubmission = async (userId, submissionId) => {
   }
 
   return {
-    submissionId: submission.submission_id,
-    userId: submission.user_id,
-    submissionTitle: submission.story_title,
+    submissionId:      submission.submission_id,
+    userId:            submission.user_id,
+    submissionTitle:   submission.story_title,
     submissionContent: submission.story_description,
-    submissionStatus: ['pending', 'approved', 'rejected'][submission.story_status] || 'pending',
-    createdOn: submission.created_on,
-    updatedOn: submission.updated_on,
+    submissionStatus:  ['pending', 'approved', 'rejected'][submission.story_status] || 'pending',
+    createdOn:         submission.created_on,
+    updatedOn:         submission.updated_on,
   };
 };
 
@@ -1255,4 +1272,4 @@ const clearUserReflectionAndNotes = async (userId) => {
   }
 };
 
-module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics, resetUserInteraction, clearUserReflectionAndNotes };
+module.exports = { saveUser, generateUserToken, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, markStoryAsRead, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics, resetUserInteraction, clearUserReflectionAndNotes };

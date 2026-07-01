@@ -2,7 +2,7 @@
 
 const express = require('express');
 const { body, param } = require('express-validator');
-const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler, resetInteractionHandler, clearReflectionAndNotesHandler } = require('../../Controllers/userController');
+const { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, markStoryAsReadHandler, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler, resetInteractionHandler, clearReflectionAndNotesHandler } = require('../../Controllers/userController');
 const auth = require('../../middleware/token');
 
 const router = express.Router();
@@ -479,6 +479,227 @@ router.get('/search', getUserSearchHandler);
 router.get('/metrics', auth, getUserMetricsHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /users/mark-as-read/:storyId  (#1263)
+//
+// ✅ CORRECTED — previously was: GET /users/:userId/stories/:storyId
+//
+// Java Swagger: POST /users/mark-as-read/{storyId}?visitorId=
+//   - Method:    POST  (was: GET — WRONG)
+//   - Path:      /users/mark-as-read/:storyId  (was: /users/:userId/stories/:storyId — WRONG)
+//   - Auth:      optional  (was: required — WRONG)
+//   - storyId:   path param  ✅
+//   - visitorId: query param  (was: missing — WRONG)
+//   - userId:    NOT in path — derived from JWT token if present
+//   - Validation:  param('storyId') only  (was: param('userId') + param('storyId') — WRONG)
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /users/mark-as-read/{storyId}:
+ *   post:
+ *     summary: Mark a story as read by the current user
+ *     description: >
+ *       Marks the specified story as read for the authenticated user or visitor.
+ *       Mirrors Java `UserController.markStoryAsReadByUser()`.
+ *
+ *       Business rules:
+ *       - `storyId` is a **path parameter** (required).
+ *       - `visitorId` is an **optional query parameter** for anonymous users.
+ *       - **Authorization is optional** — logged-in users send a Bearer JWT;
+ *         anonymous users pass visitorId query param.
+ *       - If a user_story_interaction record already exists, it is updated
+ *         (mark_as_read = 1); otherwise a new record is created.
+ *       - **Response is void** — HTTP 200 with no body (Java returns void).
+ *       - `userId` is NOT in the URL path — it is extracted from the JWT token.
+ *     tags: [Users]
+ *     security:
+ *       - {}
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: storyId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: ID of the story to mark as read
+ *         example: 100
+ *       - in: query
+ *         name: visitorId
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional visitor UUID for anonymous users
+ *         example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+ *     responses:
+ *       200:
+ *         description: Story marked as read successfully (no response body)
+ *       404:
+ *         description: Story not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string, example: "Story not found with id: 100" }
+ *       422:
+ *         description: Validation error — invalid storyId
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:  { type: integer, example: 0 }
+ *                 message: { type: string,  example: "Validation Error" }
+ *       500:
+ *         $ref: '#/components/responses/500'
+ */
+router.post('/mark-as-read/:storyId', [
+  // ✅ Only storyId validated — userId removed from path
+  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
+], markStoryAsReadHandler);
+
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /users/bookmark/:storyId  (#1264)
+//
+// ✅ CORRECTED — previously was: POST /users/:userId/stories/:storyId/bookmark
+//
+// Java Swagger: POST /users/bookmark/{storyId}
+//   - Path:     /users/bookmark/:storyId  (was: /users/:userId/stories/:storyId/bookmark)
+//   - Auth:     required  ✅
+//   - storyId:  path param  ✅
+//   - userId:   NOT in path — derived from JWT token (req.decodedToken.user_id)
+//   - Validation: param('storyId') only  (was: param('userId') + param('storyId'))
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /users/bookmark/{storyId}:
+ *   post:
+ *     summary: Add/save story to bookmarks
+ *     description: >
+ *       Bookmarks a story for the authenticated user.
+ *       Mirrors Java `UserController.addBookmark()`.
+ *
+ *       Business rules:
+ *       - `storyId` is a **path parameter**.
+ *       - **userId is derived from the Bearer JWT token** — it is NOT in the URL path.
+ *       - Returns HTTP 201 with bookmark details on success.
+ *       - Returns HTTP 409 if the story is already bookmarked by this user.
+ *       - Returns HTTP 404 if the story or user is not found.
+ *       - **Authorization is required**.
+ *     tags: [Bookmarks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: storyId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: ID of the story to bookmark
+ *         example: 100
+ *     responses:
+ *       201:
+ *         description: Story bookmarked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:      { type: boolean, example: true }
+ *                 bookmarkId:   { type: integer, example: 1 }
+ *                 userId:       { type: integer, example: 42 }
+ *                 storyId:      { type: integer, example: 100 }
+ *                 bookmarkedOn: { type: string,  format: date-time }
+ *                 message:      { type: string,  example: "Story bookmarked successfully" }
+ *       404:
+ *         description: User or story not found
+ *       409:
+ *         description: Story already bookmarked by this user
+ *       401:
+ *         description: Unauthorized — no or invalid token
+ *       403:
+ *         $ref: '#/components/responses/403'
+ *       422:
+ *         description: Validation error
+ *       500:
+ *         $ref: '#/components/responses/500'
+ */
+router.post('/bookmark/:storyId', auth, [
+  // ✅ Only storyId validated — userId removed from path
+  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
+], addBookmark);
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /users/bookmark/:userId/:storyId  (#1266)
+//
+// ✅ CORRECTED — previously was: DELETE /users/:userId/stories/:storyId/bookmark
+//
+// Java Swagger: DELETE /users/bookmark/{userId}/{storyId}
+//   - Path:     /users/bookmark/:userId/:storyId  (was: /users/:userId/stories/:storyId/bookmark)
+//   - userId:   still a path param  ✅
+//   - storyId:  still a path param  ✅
+//   - Validation: UNCHANGED (both params still validated as positive integers)
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /users/bookmark/{userId}/{storyId}:
+ *   delete:
+ *     summary: Remove/delete story from bookmarks
+ *     description: >
+ *       Removes a bookmarked story for the specified user.
+ *       Mirrors Java `UserController.deleteBookmark()`.
+ *
+ *       Business rules:
+ *       - Both `userId` and `storyId` are **path parameters**.
+ *       - Returns HTTP 200 with a success map on deletion.
+ *       - Returns HTTP 404 if the user, story, or bookmark is not found.
+ *     tags: [Bookmarks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: ID of the user whose bookmark to remove
+ *         example: 42
+ *       - in: path
+ *         name: storyId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *         description: ID of the story to unbookmark
+ *         example: 100
+ *     responses:
+ *       200:
+ *         description: Bookmark removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:  { type: boolean, example: true }
+ *                 userId:   { type: integer, example: 42 }
+ *                 storyId:  { type: integer, example: 100 }
+ *                 message:  { type: string,  example: "Story bookmark removed successfully" }
+ *       404:
+ *         description: User, story, or bookmark not found
+ *       422:
+ *         description: Validation error
+ *       500:
+ *         $ref: '#/components/responses/500'
+ */
+router.delete('/bookmark/:userId/:storyId', auth, [
+  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
+], deleteBookmark);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PUT /users/:userId  (#1259)
 // ─────────────────────────────────────────────────────────────────────────────
 /**
@@ -736,32 +957,47 @@ router.delete('/:userId', auth, [
 // ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /users/language  (Swagger corrected)
+//
+// ✅ CORRECTED — was: PATCH /users/:userId/language
+//
+// Java Swagger: PATCH /users/language
+//   - NO userId in path
+//   - userId derived from JWT token (req.decodedToken.user_id)
+//   - languageEnum in request body
+//   - Auth: required
+//   - Validation: ONLY languageEnum body — param('userId') REMOVED
+// ─────────────────────────────────────────────────────────────────────────────
 /**
  * @swagger
- * /users/{userId}/language:
+ * /users/language:
  *   patch:
- *     summary: Update user's preferred language
- *     description: Change language preference to ENGLISH or HINDI
+ *     summary: Update the authenticated user's preferred language
+ *     description: >
+ *       Updates the language preference for the currently authenticated user.
+ *       Mirrors Java `UserController.updateLanguage()`.
+ *
+ *       Business rules:
+ *       - userId is derived from the Bearer JWT token — NOT from the URL path.
+ *       - languageEnum must be 0 (ENGLISH) or 1 (HINDI).
+ *       - Authorization is **required**.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 42
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - languageEnum
+ *             required: [languageEnum]
  *             properties:
- *               languageEnum: { type: integer, enum: [0, 1], example: 1, description: "0=ENGLISH, 1=HINDI" }
+ *               languageEnum:
+ *                 type: integer
+ *                 enum: [0, 1]
+ *                 description: "0 = ENGLISH, 1 = HINDI"
+ *                 example: 1
  *     responses:
  *       200:
  *         description: Language updated successfully
@@ -771,188 +1007,22 @@ router.delete('/:userId', auth, [
  *               type: object
  *               properties:
  *                 userId:       { type: integer, example: 42 }
- *                 userName:     { type: string, example: "John Doe" }
+ *                 userName:     { type: string,  example: "Priya Sharma" }
  *                 languageEnum: { type: integer, example: 1 }
- *                 message:      { type: string, example: "Language updated to HINDI" }
- *       400:
- *         description: Invalid languageEnum value
+ *                 message:      { type: string,  example: "Language updated to HINDI" }
+ *       401:
+ *         description: Unauthorized — no or invalid token
  *       404:
  *         description: User not found
- *       401:
- *         description: Unauthorized
  *       422:
- *         description: Validation error
+ *         description: Validation error — invalid languageEnum
+ *       500:
+ *         $ref: '#/components/responses/500'
  */
-router.patch('/:userId/language', auth, [
-  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+router.patch('/language', auth, [
+  // ✅ NO param('userId') — userId comes from token, not path
   body('languageEnum').isIn([0, 1]).withMessage('languageEnum must be 0 (ENGLISH) or 1 (HINDI)'),
 ], updateLanguageById);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1263 — Read Story
-// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /users/{userId}/stories/{storyId}:
- *   get:
- *     summary: Read/retrieve a story by ID
- *     description: Get complete story details including content, tags, and metadata
- *     tags: [Stories]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 42
- *       - in: path
- *         name: storyId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 100
- *     responses:
- *       200:
- *         description: Story retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 storyId:         { type: integer, example: 100 }
- *                 userId:          { type: integer, example: 42 }
- *                 storyTitle:      { type: string, example: "My First Story" }
- *                 storyDescription: { type: string }
- *                 storyContent:    { type: string }
- *                 storyStatus:     { type: string, example: "published" }
- *                 storyViews:      { type: integer, example: 150 }
- *                 storyLikes:      { type: integer, example: 25 }
- *                 storyBookmarks:  { type: integer, example: 10 }
- *                 isOwnStory:      { type: boolean, example: true }
- *                 tags:            { type: array }
- *                 createdOn:       { type: string, format: date-time }
- *                 updatedOn:       { type: string, format: date-time }
- *       404:
- *         description: Story not found
- *       401:
- *         description: Unauthorized
- *       422:
- *         description: Validation error
- */
-router.get('/:userId/stories/:storyId', auth, [
-  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
-  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
-], readStoryById);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1264 — Add Story Bookmark
-// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /users/{userId}/stories/{storyId}/bookmark:
- *   post:
- *     summary: Add/save story to bookmarks
- *     description: Bookmark a story for later reading
- *     tags: [Bookmarks]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 42
- *       - in: path
- *         name: storyId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 100
- *     responses:
- *       201:
- *         description: Story bookmarked successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:      { type: boolean, example: true }
- *                 bookmarkId:   { type: integer, example: 1 }
- *                 userId:       { type: integer, example: 42 }
- *                 storyId:      { type: integer, example: 100 }
- *                 bookmarkedOn: { type: string, format: date-time }
- *                 message:      { type: string, example: "Story bookmarked successfully" }
- *       404:
- *         description: User or story not found
- *       409:
- *         description: Story already bookmarked
- *       401:
- *         description: Unauthorized
- *       422:
- *         description: Validation error
- */
-router.post('/:userId/stories/:storyId/bookmark', auth, [
-  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
-  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
-], addBookmark);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Issue #1266 — Delete Bookmark
-// ADD THIS TO YOUR EXISTING Routes/v1/userRoute.js
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * @swagger
- * /users/{userId}/stories/{storyId}/bookmark:
- *   delete:
- *     summary: Remove/delete story from bookmarks
- *     description: Remove a bookmarked story
- *     tags: [Bookmarks]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 42
- *       - in: path
- *         name: storyId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 100
- *     responses:
- *       200:
- *         description: Bookmark removed successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:  { type: boolean, example: true }
- *                 userId:   { type: integer, example: 42 }
- *                 storyId:  { type: integer, example: 100 }
- *                 message:  { type: string }
- *       404:
- *         description: User, story, or bookmark not found
- *       401:
- *         description: Unauthorized
- *       422:
- *         description: Validation error
- */
-router.delete('/:userId/stories/:storyId/bookmark', auth, [
-  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
-  param('storyId').isInt({ min: 1 }).withMessage('storyId must be a positive integer'),
-], deleteBookmark);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue #1267 — User Submissions (Add, Get, Delete)
@@ -1007,40 +1077,71 @@ router.post('/:userId/submissions', auth, [
   body('submissionStatus').optional().isIn(['pending', 'approved', 'rejected']).withMessage('submissionStatus must be pending, approved, or rejected'),
 ], addSubmission);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /users/submission/:submissionId  (Swagger corrected)
+//
+// ✅ CORRECTED — was: GET /users/:userId/submissions/:submissionId
+//
+// Java Swagger: GET /users/submission/{submissionId}
+//   - submissionId: path param (singular "submission", NOT "submissions")
+//   - userId: NOT in path — optional, from JWT token if auth provided
+//   - Auth: optional (Java: "optional Authorization; request context")
+//   - Validation: ONLY param('submissionId') — param('userId') REMOVED
+//
+// NOTE: Must be registered BEFORE /:userId to avoid Express shadowing.
+// ─────────────────────────────────────────────────────────────────────────────
 /**
  * @swagger
- * /users/{userId}/submissions/{submissionId}:
+ * /users/submission/{submissionId}:
  *   get:
- *     summary: Get a specific submission
- *     description: Retrieve details of a specific submission
+ *     summary: Get a specific submission by ID
+ *     description: >
+ *       Retrieves a submission by its ID.
+ *       Mirrors Java `UserController.getSubmission()`.
+ *
+ *       Business rules:
+ *       - `submissionId` is the only path parameter.
+ *       - `userId` is NOT in the URL — derived from JWT token if auth is provided.
+ *       - **Authorization is optional** — if a token is present and valid, the
+ *         submission is filtered by both submissionId AND userId (ownership check).
+ *         If no token, the submission is fetched by submissionId only.
  *     tags: [Submissions]
  *     security:
+ *       - {}
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 42
  *       - in: path
  *         name: submissionId
  *         required: true
  *         schema:
  *           type: integer
+ *           minimum: 1
+ *         description: ID of the submission to retrieve
  *         example: 1
  *     responses:
  *       200:
- *         description: Submission retrieved
+ *         description: Submission retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 submissionId:      { type: integer, example: 1 }
+ *                 userId:            { type: integer, example: 42 }
+ *                 submissionTitle:   { type: string,  example: "My Story" }
+ *                 submissionContent: { type: string,  example: "Story content here" }
+ *                 submissionStatus:  { type: string,  example: "pending" }
+ *                 createdOn:         { type: string,  format: date-time }
+ *                 updatedOn:         { type: string,  format: date-time }
  *       404:
- *         description: User or submission not found
- *       401:
- *         description: Unauthorized
+ *         description: Submission not found
  *       422:
- *         description: Validation error
+ *         description: Validation error — invalid submissionId
+ *       500:
+ *         $ref: '#/components/responses/500'
  */
-router.get('/:userId/submissions/:submissionId', auth, [
-  param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+router.get('/submission/:submissionId', [
+  // ✅ Only submissionId validated — no param('userId')
   param('submissionId').isInt({ min: 1 }).withMessage('submissionId must be a positive integer'),
 ], getSubmission);
 

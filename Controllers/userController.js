@@ -2,7 +2,7 @@
 
 const { matchedData } = require('express-validator');
 const { handleValidationErrors } = require('../utils/helper');
-const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, readStory, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics, resetUserInteraction, clearUserReflectionAndNotes } = require('../services/userService');
+const { saveUser, checkExistingUser, updateUser, getUser, deleteUser, updateLanguage, markStoryAsRead, addStoryBookmark ,getUserList, deleteStoryBookmark, addUserSubmission, getUserSubmission, getUserSubmissions, deleteUserSubmission, getUserSearch, getUserMetrics, resetUserInteraction, clearUserReflectionAndNotes } = require('../services/userService');
 
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_OPTS = { httpOnly: true, path: '/', maxAge: COOKIE_MAX_AGE_MS, sameSite: 'Lax' };
@@ -130,12 +130,27 @@ const deleteUserById = async (req, res) => {
 // Issue #1262 — Update Language for User
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /users/language  (Swagger corrected)
+//
+// ❌ OLD: PATCH /users/:userId/language
+//   const { userId } = req.params;   ← userId from URL path (WRONG)
+//
+// ✅ NEW: PATCH /users/language
+//   userId from req.decodedToken.user_id   ← from JWT token (auth required)
+//   languageEnum from request body (unchanged)
+// ─────────────────────────────────────────────────────────────────────────────
 const updateLanguageById = async (req, res) => {
   try {
     if (handleValidationErrors(req, res)) return;
-    const { userId } = req.params;
-    const data = matchedData(req, { includeOptionals: true });
 
+    // userId from JWT token — NOT from URL path param
+    const userId = req.decodedToken.user_id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unable to identify user from token' });
+    }
+
+    const data = matchedData(req, { includeOptionals: true });
     const result = await updateLanguage(Number(userId), data.languageEnum);
     return res.status(200).json(result);
   } catch (err) {
@@ -147,18 +162,45 @@ const updateLanguageById = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Issue #1263 — Read Story
+// Issue #1263 — Mark Story As Read
+//
+// ❌ OLD handler name: readStoryById
+// ✅ NEW handler name: markStoryAsReadHandler
+//
+// ❌ OLD param extraction:
+//   const { userId, storyId } = req.params;
+//   → userId was taken from URL path ← WRONG (Java has no userId in path here)
+//
+// ✅ NEW param extraction:
+//   storyId  → req.params.storyId         (path param — always present)
+//   userId   → req.decodedToken?.user_id  (from JWT token — optional auth)
+//   visitorId→ req.query.visitorId        (query param — for anonymous users)
+//
+// ❌ OLD response:
+//   return res.status(200).json(story);   ← returned full story JSON (WRONG)
+//
+// ✅ NEW response:
+//   return res.status(200).send();        ← void (Java returns void)
 // ─────────────────────────────────────────────────────────────────────────────
-
-const readStoryById = async (req, res) => {
+const markStoryAsReadHandler = async (req, res) => {
   try {
     if (handleValidationErrors(req, res)) return;
-    const { userId, storyId } = req.params;
-
-    const story = await readStory(Number(userId), Number(storyId));
-    return res.status(200).json(story);
+ 
+    // storyId from path param
+    const { storyId } = req.params;
+ 
+    // userId from JWT token (optional — auth is optional on this endpoint)
+    const userId = req.decodedToken?.user_id || null;
+ 
+    // visitorId from query param (optional — for anonymous users)
+    const visitorId = req.query.visitorId || null;
+ 
+    await markStoryAsRead(Number(storyId), userId ? Number(userId) : null, visitorId);
+ 
+    // Java returns void — respond with HTTP 200 and no body
+    return res.status(200).send();
   } catch (err) {
-    console.error('[readStoryById]', err.message);
+    console.error('[markStoryAsReadHandler]', err.message);
     if (err.status === 404) return res.status(404).json({ message: err.message });
     return res.status(500).json({ ERROR: 'Internal server Error', DETAILS: err.message });
   }
@@ -166,13 +208,30 @@ const readStoryById = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue #1264 — Add Story Bookmark
+//
+// ❌ OLD param extraction:
+//   const { userId, storyId } = req.params;
+//   → userId was taken from URL path ← WRONG
+//   Java endpoint: POST /users/bookmark/{storyId} — only storyId in path
+//
+// ✅ NEW param extraction:
+//   storyId → req.params.storyId        (path param)
+//   userId  → req.decodedToken.user_id  (from JWT token — auth is required)
 // ─────────────────────────────────────────────────────────────────────────────
-
 const addBookmark = async (req, res) => {
   try {
     if (handleValidationErrors(req, res)) return;
-    const { userId, storyId } = req.params;
-
+ 
+    // storyId from path param (only param in URL)
+    const { storyId } = req.params;
+ 
+    // userId from JWT token (required — auth middleware enforced on this route)
+    const userId = req.decodedToken.user_id;
+ 
+    if (!userId) {
+      return res.status(401).json({ message: 'Unable to identify user from token' });
+    }
+ 
     const result = await addStoryBookmark(Number(userId), Number(storyId));
     return res.status(201).json(result);
   } catch (err) {
@@ -258,12 +317,29 @@ const addSubmission = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /users/submission/{submissionId}  (Swagger corrected)
+//
+// ❌ OLD: GET /users/:userId/submissions/:submissionId
+//   const { userId, submissionId } = req.params;  ← userId from path (WRONG)
+//   getUserSubmission(Number(userId), Number(submissionId))
+//
+// ✅ NEW: GET /users/submission/:submissionId
+//   submissionId from req.params.submissionId  (path param — required)
+//   userId from req.decodedToken?.user_id      (JWT token — optional auth)
+//   Signature change: getUserSubmission(submissionId, userId)
+// ─────────────────────────────────────────────────────────────────────────────
 const getSubmission = async (req, res) => {
   try {
     if (handleValidationErrors(req, res)) return;
-    const { userId, submissionId } = req.params;
 
-    const result = await getUserSubmission(Number(userId), Number(submissionId));
+    // submissionId from path param only
+    const { submissionId } = req.params;
+
+    // userId from JWT token (optional — auth is optional per Java Swagger)
+    const userId = req.decodedToken?.user_id || null;
+
+    const result = await getUserSubmission(Number(submissionId), userId ? Number(userId) : null);
     return res.status(200).json(result);
   } catch (err) {
     console.error('[getSubmission]', err.message);
@@ -462,4 +538,4 @@ const clearReflectionAndNotesHandler = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, readStoryById, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler, resetInteractionHandler, clearReflectionAndNotesHandler };
+module.exports = { registerUser, loginUser, updateUserById, getUserById, deleteUserById, updateLanguageById, markStoryAsReadHandler, addBookmark, getUserListHandler, deleteBookmark, addSubmission, getSubmission, getSubmissions, deleteSubmission, getUserSearchHandler, getUserMetricsHandler, getUserMetricsByIdHandler, resetInteractionHandler, clearReflectionAndNotesHandler };
